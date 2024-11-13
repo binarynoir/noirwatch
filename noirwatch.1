@@ -1,0 +1,114 @@
+.TH PAGEMON 1 "November 2024" "Version 1.0.0" "NoirWatch Manual"
+.SH NAME
+NoirWatch \- Monitors specified websites for changes and sends notifications.
+
+.SH SYNOPSIS
+.B noirwatch
+.RI [ options ] " <url>..."
+
+.SH DESCRIPTION
+.B NoirWatch
+is a script that monitors specified websites for changes and sends notifications based on user-defined thresholds.
+
+.SH OPTIONS
+
+.SS General Options
+.TP
+.B \-h, \--help
+Display this help message.
+.TP
+.B \-V, \--version
+Display the script version.
+
+.SS Configuration and Initialization
+.TP
+.B \-c, \--config \fI<config_file>\fR
+Specify a custom configuration file.
+.TP
+.B \-I, \--init
+Initialize the configuration file.
+.TP
+.B \-s, \--show-config
+Show the configuration settings.
+.TP
+.B \-S, \--show-config-file
+Show the configuration file.
+
+.SS URL Management
+.TP
+.B \-f, \--url-file \fI<file>\fR
+Specify a file containing a list of URLs to monitor.
+.TP
+.B \-U, \--list-urls
+List all watched URLs.
+.TP
+.B \-C, \--clean
+Delete all cached files.
+
+.SS Execution Options
+.TP
+.B \-i, \--interval \fI<minutes>\fR
+Set the interval between checks (default is 15 minutes).
+.TP
+.B \-t, \--threshold \fI<percentage>\fR
+Set the threshold percentage for detecting changes (default: 0%).
+.TP
+.B [INT]<url>
+Specify a threshold for a specific URL. This overrides the global threshold setting.
+.TP
+.B \-b, \--background
+Run the script in the background.
+.TP
+.B \-p, \--pushover
+Send Pushover notifications.
+.TP
+.B \-a, \--api-token \fI<token>\fR
+Specify the API token for Pushover notifications.
+.TP
+.B \-u, \--user-key \fI<key>\fR
+Specify the user key for Pushover notifications.
+.TP
+.B \-d, \--desktop
+Send desktop notifications.
+
+.SS Logging and Output
+.TP
+.B \-v, \--verbose
+Enable verbose output.
+.TP
+.B \-l, \--log
+Log the log file to the screen.
+.TP
+.B \-o, \--output \fI<file>\fR
+Specify a custom log file location.
+.TP
+.B \-L, \--log-level \fI<level>\fR
+Set the log level (FATAL, ERROR, WARN, INFO, DEBUG, TRACE).
+
+.SS Process Management
+.TP
+.B \-K, \--killall
+Kill all running instances of the script.
+.TP
+.B \-k, \--kill \fI<pid>\fR
+Kill a specific instance of the script by PID.
+.TP
+.B \-P, \--list-pids
+List all running instances of the script.
+
+.SH EXAMPLES
+.TP
+.B noirwatch \-i 10 \-t 10 http://example.com
+Monitor http://example.com every 10 minutes and notify if changes exceed 10%.
+.TP
+.B noirwatch \-f urls.txt \-p \-a YOUR_API_TOKEN \-u YOUR_USER_KEY
+Monitor URLs listed in urls.txt and send Pushover notifications.
+
+.SH AUTHOR
+John Smith III
+
+.SH LICENSE
+MIT License
+
+.SH SEE ALSO
+curl(1), md5sum(1), diff(1)
