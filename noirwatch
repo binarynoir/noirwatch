@@ -4,11 +4,11 @@
 # Description: Monitors specified websites for changes and sends notifications.
 # Author: John Smith III
 # License: MIT License
-# Version: 1.0.0
+# Version: 1.0.1
 # Last Updated: 2024-11-13
 
 # Script version
-VERSION=1.0.0
+VERSION=1.0.1
 
 # Default configuration file location
 CONFIG_FILE="$HOME/.noirwatchrc"
@@ -80,7 +80,7 @@ log_to_screen() {
 }
 
 # Log messages
-log() {
+log_message() {
     local log_level_name=$1
     local message=$2
     local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
@@ -172,49 +172,49 @@ show_version() {
 
 # Show configuration information
 show_config() {
-    [ -n "$CONFIG_FILE" ] && log "INFO" "Configurtaion file: $CONFIG_FILE"
-    [ -n "$URL_FILE" ] && log "INFO" "URL file: $URL_FILE"
-    [ -n "$CACHE_DIR" ] && log "INFO" "Cache directory: $CACHE_DIR"
-    [ -n "$LOG_FILE" ] && log "INFO" "Log file: $LOG_FILE"
-    [ -n "$CHECK_INTERVAL" ] && log "INFO" "Check interval: $CHECK_INTERVAL min(s)"
-    [ -n "$BACKGROUND" ] && log "INFO" "Background: $BACKGROUND"
-    [ -n "$PUSHOVER" ] && log "INFO" "Pushover ebabled: $PUSHOVER"
-    [ -n "$DESKTOP" ] && log "INFO" "Desktop notification ebabled: $DESKTOP"
-    [ -n "$VERBOSE" ] && log "INFO" "Verbose ebabled: $VERBOSE"
+    [ -n "$CONFIG_FILE" ] && log_message "INFO" "Configurtaion file: $CONFIG_FILE"
+    [ -n "$URL_FILE" ] && log_message "INFO" "URL file: $URL_FILE"
+    [ -n "$CACHE_DIR" ] && log_message "INFO" "Cache directory: $CACHE_DIR"
+    [ -n "$LOG_FILE" ] && log_message "INFO" "Log file: $LOG_FILE"
+    [ -n "$CHECK_INTERVAL" ] && log_message "INFO" "Check interval: $CHECK_INTERVAL min(s)"
+    [ -n "$BACKGROUND" ] && log_message "INFO" "Background: $BACKGROUND"
+    [ -n "$PUSHOVER" ] && log_message "INFO" "Pushover ebabled: $PUSHOVER"
+    [ -n "$DESKTOP" ] && log_message "INFO" "Desktop notification ebabled: $DESKTOP"
+    [ -n "$VERBOSE" ] && log_message "INFO" "Verbose ebabled: $VERBOSE"
 }
 
 # Show configuration file
 show_config_file() {
-    log "INFO" "Configuration file: $CONFIG_FILE"
-    log "INFO" ""
+    log_message "INFO" "Configuration file: $CONFIG_FILE"
+    log_message "INFO" ""
     if [ -f "$CONFIG_FILE" ]; then
         cat "$CONFIG_FILE"
     else
-        log "ERROR" "Configuration file not found: $CONFIG_FILE"
+        log_message "ERROR" "Configuration file not found: $CONFIG_FILE"
     fi
-    log "INFO" ""
+    log_message "INFO" ""
     exit 0
 }
 
 # Show configuration file
 # TODO use this call
 show_urls() {
-    log "INFO" ""
-    log "INFO" "Monitoring the following URLs:"
+    log_message "INFO" ""
+    log_message "INFO" "Monitoring the following URLs:"
     for URL in "${URLS[@]}"; do
-        log "INFO" "  - $URL"
+        log_message "INFO" "  - $URL"
     done
-    log "INFO" ""
+    log_message "INFO" ""
 }
 
 # Delete all cached files
 delete_cache() {
     local message1="Deleting all cached files..."
-    log "TRACE" "$message1"
+    log_message "TRACE" "$message1"
     [ "${LOG_LEVELS[$LOG_LEVEL]}" -ne "${LOG_LEVELS["TRACE"]}" ] && printf "%s\n" "$message1"
     rm -rf "$CACHE_DIR"
     local message2="All cached files deleted."
-    log "TRACE" "$message2"
+    log_message "TRACE" "$message2"
     [ "${LOG_LEVELS[$LOG_LEVEL]}" -ne "${LOG_LEVELS["TRACE"]}" ] && printf "%s\n" "$message2"
     exit 0
 }
@@ -231,21 +231,21 @@ check_website() {
     local normalized_file="$CACHE_DIR/normalized_content_$encoded_url.txt"
     local hash_file="$CACHE_DIR/hash_$encoded_url.txt"
 
-    log "DEBUG" "Checking URL: $clean_url"
-    log "DEBUG" "  Submitted URL: $website_url"
-    log "DEBUG" "  Global threshold: $THRESHOLD%"
-    log "DEBUG" "  Override threshold ${prefixed_threshold:+$prefixed_threshold%}${prefixed_threshold:-none}"
-    log "DEBUG" "  Applied threshold: $applied_threshold%"
+    log_message "DEBUG" "Checking URL: $clean_url"
+    log_message "DEBUG" "  Submitted URL: $website_url"
+    log_message "DEBUG" "  Global threshold: $THRESHOLD%"
+    log_message "DEBUG" "  Override threshold ${prefixed_threshold:+$prefixed_threshold%}${prefixed_threshold:-none}"
+    log_message "DEBUG" "  Applied threshold: $applied_threshold%"
 
     # Fetch the current content of the website
     if ! curl -s "$clean_url" >"$current_file"; then
-        log "ERROR" "Failed to fetch: $clean_url"
+        log_message "ERROR" "Failed to fetch: $clean_url"
         return 1
     fi
 
     # Normalize the content
     if ! normalize_content "$current_file" >"$normalized_file"; then
-        log "ERROR" "Failed to normalize content for: $clean_url"
+        log_message "ERROR" "Failed to normalize content for: $clean_url"
         return 1
     fi
 
@@ -272,41 +272,41 @@ check_website() {
                     change_percent=0
                 fi
 
-                log "DEBUG" "  Total lines: $total_lines"
-                log "DEBUG" "  Change percent: $change_percent%"
+                log_message "DEBUG" "  Total lines: $total_lines"
+                log_message "DEBUG" "  Change percent: $change_percent%"
 
                 # Ensure both variables are integers before comparison
                 if [ "$change_percent" -ge "$applied_threshold" ] 2>/dev/null; then
                     local message="The website $clean_url has changed by $change_percent%!"
-                    log "WARN" "$message"
+                    log_message "WARN" "$message"
 
                     # Send notifications based on user options
                     if [ "$PUSHOVER" = true ]; then
-                        log "DEBUG" "  Processing Pushover notification: $clean_url"
+                        log_message "DEBUG" "  Processing Pushover notification: $clean_url"
                         if ! send_pushover_notification "$clean_url" "$message"; then
-                            log "ERROR" "Failed to send Pushover notification for: $clean_url"
+                            log_message "ERROR" "Failed to send Pushover notification for: $clean_url"
                         fi
                     fi
                     if [ "$DESKTOP" = true ]; then
                         if ! send_desktop_notification "$message"; then
-                            log "ERROR" "Failed to send desktop notification for: $clean_url"
+                            log_message "ERROR" "Failed to send desktop notification for: $clean_url"
                         fi
                     fi
                 else
-                    log "DEBUG" "  Changes detected for: $clean_url"
-                    log "DEBUG" "  changes are below the threshold: ($change_percent%)"
+                    log_message "DEBUG" "  Changes detected for: $clean_url"
+                    log_message "DEBUG" "  changes are below the threshold: ($change_percent%)"
                 fi
             else
-                log "DEBUG" "No previous content found for: $clean_url"
-                log "DEBUG" "  Saving current content."
+                log_message "DEBUG" "No previous content found for: $clean_url"
+                log_message "DEBUG" "  Saving current content."
             fi
         else
-            log "DEBUG" "  Change percent: 0%"
-            log "DEBUG" "  No changes detected for: $clean_url"
+            log_message "DEBUG" "  Change percent: 0%"
+            log_message "DEBUG" "  No changes detected for: $clean_url"
         fi
     else
-        log "DEBUG" "  No previous content found for: $clean_url"
-        log "DEBUG" "  Saving current content."
+        log_message "DEBUG" "  No previous content found for: $clean_url"
+        log_message "DEBUG" "  Saving current content."
     fi
 
     # Save the current hash and normalized content for future comparison
@@ -338,12 +338,12 @@ send_desktop_notification() {
         if command -v notify-send &>/dev/null; then
             notify-send "Website Monitor" "$message"
         else
-            log "ERROR" "notify-send is not installed. Install it to enable notifications on Linux."
+            log_message "ERROR" "notify-send is not installed. Install it to enable notifications on Linux."
         fi
     elif [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
         powershell -Command "[System.Windows.Forms.MessageBox]::Show('$message', 'Website Monitor')"
     else
-        log "ERROR" "Desktop notifications are only supported on macOS, Linux, and Windows."
+        log_message "ERROR" "Desktop notifications are only supported on macOS, Linux, and Windows."
     fi
 }
 
@@ -353,23 +353,23 @@ send_pushover_notification() {
     local message=$2
     local response
 
-    log "DEBUG" "  Pushover Notification"
-    log "DEBUG" "    Url: $website_url"
-    log "DEBUG" "    Message: $message"
+    log_message "DEBUG" "  Pushover Notification"
+    log_message "DEBUG" "    Url: $website_url"
+    log_message "DEBUG" "    Message: $message"
 
     # Check if API_TOKEN is set
     if [[ -z "$API_TOKEN" ]]; then
-        log "ERROR" "Error: API_TOKEN is not set."
+        log_message "ERROR" "Error: API_TOKEN is not set."
         return 1
     fi
 
     # Check if USER_KEY is set
     if [[ -z "$USER_KEY" ]]; then
-        log "ERROR" "Error: USER_KEY is not set."
+        log_message "ERROR" "Error: USER_KEY is not set."
         return 1
     fi
-    log "TRACE" "    API_TOKEN: $API_TOKEN"
-    log "TRACE" "    USER_KEY: $USER_KEY"
+    log_message "TRACE" "    API_TOKEN: $API_TOKEN"
+    log_message "TRACE" "    USER_KEY: $USER_KEY"
     response=$(curl -s \
         --form-string "token=$API_TOKEN" \
         --form-string "user=$USER_KEY" \
@@ -380,7 +380,7 @@ send_pushover_notification() {
         https://api.pushover.net/1/messages.json)
 
     if [[ $? -ne 0 ]]; then
-        log "ERROR" "Failed to send Pushover notification."
+        log_message "ERROR" "Failed to send Pushover notification."
         return 1
     fi
 
@@ -388,11 +388,11 @@ send_pushover_notification() {
     status=$(echo "$response" | jq -r '.status')
 
     if [[ "$status" -ne 1 ]]; then
-        log "ERROR" "Pushover API returned an error: $response"
+        log_message "ERROR" "Pushover API returned an error: $response"
         return 1
     fi
 
-    log "DEBUG" "    Pushover notification sent successfully."
+    log_message "DEBUG" "    Pushover notification sent successfully."
     return 0
 }
 
@@ -402,7 +402,7 @@ load_config() {
     if [ -f "$CONFIG_FILE" ]; then
         source "$CONFIG_FILE"
     else
-        log "INFO" "Configuration file not found: $CONFIG_FILE"
+        log_message "INFO" "Configuration file not found: $CONFIG_FILE"
         exit 1
     fi
 }
@@ -450,13 +450,13 @@ EOF
 
     # Write the configuration content to the file
     echo "$config_content" >"$CONFIG_FILE"
-    log "INFO" "Default configuration file created at $CONFIG_FILE"
+    log_message "INFO" "Default configuration file created at $CONFIG_FILE"
 }
 
 # List all running instances of the script
 list_instances() {
     local message="Listing all running instances of the script..."
-    log "TRACE" "$message"
+    log_message "TRACE" "$message"
     [ "${LOG_LEVELS[$LOG_LEVEL]}" -ne "${LOG_LEVELS["TRACE"]}" ] && printf "%s\n" "$message"
     pgrep -fl "$(basename "$0")" | grep -v "inline-shell-completion"
     exit 0
@@ -465,12 +465,12 @@ list_instances() {
 # Kill all running instances of the script
 killall_script() {
     local message1="Killing all running instances of the script..."
-    log "TRACE" "$message1"
+    log_message "TRACE" "$message1"
     [ "${LOG_LEVELS[$LOG_LEVEL]}" -ne "${LOG_LEVELS["TRACE"]}" ] && printf "%s\n" "$message1"
     pkill -f "$(basename "$0")"
     local message2="All running instances killed."
     [ "${LOG_LEVELS[$LOG_LEVEL]}" -ne "${LOG_LEVELS["TRACE"]}" ] && printf "%s\n" "$message2"
-    log "TRACE" "$message2"
+    log_message "TRACE" "$message2"
     exit 0
 }
 
@@ -479,16 +479,16 @@ kill_instance() {
     local pid=$1
     if [ -z "$pid" ]; then
         local message="No PID provided. Usage: $(basename "$0") --kill <pid>"
-        log "TRACE" "$message"
+        log_message "TRACE" "$message"
         [ "${LOG_LEVELS[$LOG_LEVEL]}" -ne "${LOG_LEVELS["TRACE"]}" ] && printf "%s\n" "$message"
         exit 1
     fi
     local message1="Killing instance with PID $pid..."
-    log "TRACE" "$message1"
+    log_message "TRACE" "$message1"
     [ "${LOG_LEVELS[$LOG_LEVEL]}" -ne "${LOG_LEVELS["TRACE"]}" ] && printf "%s\n" "$message1"
     kill "$pid"
     local message2="Instance with PID $pid killed."
-    log "TRACE" "$message2"
+    log_message "TRACE" "$message2"
     [ "${LOG_LEVELS[$LOG_LEVEL]}" -ne "${LOG_LEVELS["TRACE"]}" ] && printf "%s\n" "$message2"
     exit 0
 }
@@ -497,7 +497,7 @@ kill_instance() {
 process_url_file() {
     local file=$1
     if [ ! -f "$file" ]; then
-        log "INFO" "URL file not found: $file"
+        log_message "INFO" "URL file not found: $file"
         exit 1
     fi
     while IFS= read -r URL; do
@@ -513,8 +513,8 @@ process_urls() {
         elif [ -f "$DEFAULT_URL_FILE" ]; then
             process_url_file "$DEFAULT_URL_FILE"
         elif [[ "$SHOW_CONFIG" = false && "$SHOW_CONFIG_FILE" = false ]]; then
-            log "INFO" "Usage: $(basename "$0") <website_url>... [options]"
-            log "INFO" "Try '$(basename "$0") --help' for more information."
+            log_message "INFO" "Usage: $(basename "$0") <website_url>... [options]"
+            log_message "INFO" "Try '$(basename "$0") --help' for more information."
             exit 1
         fi
     fi
@@ -525,7 +525,7 @@ show_log() {
     if [ -f "$LOG_FILE" ]; then
         cat "$LOG_FILE"
     else
-        log "INFO" "Log file not found: $LOG_FILE"
+        log_message "INFO" "Log file not found: $LOG_FILE"
     fi
     exit 0
 }
@@ -706,7 +706,7 @@ process_config_options() {
         if [[ -n ${LOG_LEVELS[$LOG_LEVEL_OPTION]} ]]; then
             LOG_LEVEL="$LOG_LEVEL_OPTION"
         else
-            log "ERROR" "Invalid log level: $LOG_LEVEL_OPTION"
+            log_message "ERROR" "Invalid log level: $LOG_LEVEL_OPTION"
             exit 1
         fi
     fi
@@ -727,10 +727,10 @@ CHECK_INTERVAL_SECONDS=$((CHECK_INTERVAL * 60))
 
 # Run the check in a loop
 run_check() {
-    log "INFO" ""
+    log_message "INFO" ""
     local datetime
     datetime=$(date +"%Y-%m-%d %H:%M:%S")
-    log "INFO" "Starting: $datetime"
+    log_message "INFO" "Starting: $datetime"
     show_config
     show_urls
 

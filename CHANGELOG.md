@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - none
 
+## [1.0.1] - 2024-11-13
+
+### Changed
+
+- Renamed log to log_message for code clarity
+
 ## [1.0.0] - 2024-11-13
 
 ### Added
