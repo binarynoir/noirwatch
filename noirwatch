@@ -4,11 +4,11 @@
 # Description: Monitors specified websites for changes and sends notifications.
 # Author: John Smith III
 # License: MIT License
-# Version: 1.0.1
+# Version: 1.1.0
 # Last Updated: 2024-11-13
 
 # Script version
-VERSION=1.0.1
+VERSION=1.1.0
 
 # Default configuration file location
 CONFIG_FILE="$HOME/.noirwatchrc"
@@ -32,12 +32,12 @@ THRESHOLD=0
 BACKGROUND=false
 
 # Pushover notification options
-PUSHOVER=false
+PUSHOVER_NOTFICATION=false
 API_TOKEN=
 USER_KEY=
 
 # Native desktop notification options
-DESKTOP=false
+DESKTOP_NOTFICATION=false
 
 # Verbose mode
 VERBOSE=false
@@ -178,8 +178,8 @@ show_config() {
     [ -n "$LOG_FILE" ] && log_message "INFO" "Log file: $LOG_FILE"
     [ -n "$CHECK_INTERVAL" ] && log_message "INFO" "Check interval: $CHECK_INTERVAL min(s)"
     [ -n "$BACKGROUND" ] && log_message "INFO" "Background: $BACKGROUND"
-    [ -n "$PUSHOVER" ] && log_message "INFO" "Pushover ebabled: $PUSHOVER"
-    [ -n "$DESKTOP" ] && log_message "INFO" "Desktop notification ebabled: $DESKTOP"
+    [ -n "$PUSHOVER_NOTFICATION" ] && log_message "INFO" "Pushover ebabled: $PUSHOVER_NOTFICATION"
+    [ -n "$DESKTOP_NOTFICATION" ] && log_message "INFO" "Desktop notification ebabled: $DESKTOP_NOTFICATION"
     [ -n "$VERBOSE" ] && log_message "INFO" "Verbose ebabled: $VERBOSE"
 }
 
@@ -281,13 +281,13 @@ check_website() {
                     log_message "WARN" "$message"
 
                     # Send notifications based on user options
-                    if [ "$PUSHOVER" = true ]; then
+                    if [ "$PUSHOVER_NOTFICATION" = true ]; then
                         log_message "DEBUG" "  Processing Pushover notification: $clean_url"
                         if ! send_pushover_notification "$clean_url" "$message"; then
                             log_message "ERROR" "Failed to send Pushover notification for: $clean_url"
                         fi
                     fi
-                    if [ "$DESKTOP" = true ]; then
+                    if [ "$DESKTOP_NOTFICATION" = true ]; then
                         if ! send_desktop_notification "$message"; then
                             log_message "ERROR" "Failed to send desktop notification for: $clean_url"
                         fi
@@ -434,11 +434,11 @@ BACKGROUND=$BACKGROUND
 
 # Notification Settings
 # Pushover notification options
-PUSHOVER=$PUSHOVER
+PUSHOVER_NOTFICATION=$PUSHOVER_NOTFICATION
 API_TOKEN="$API_TOKEN"
 USER_KEY="$USER_KEY"
 # Native desktop notification options
-DESKTOP=$DESKTOP
+DESKTOP_NOTFICATION=$DESKTOP_NOTFICATION
 
 # Logging Settings
 # Verbose mode
@@ -599,7 +599,7 @@ while [[ $# -gt 0 ]]; do
         CLI_BACKGROUND=true
         ;;
     --pushover | -p)
-        CLI_PUSHOVER=true
+        CLI_PUSHOVER_NOTFICATION=true
         ;;
     --api-token | -a)
         if [[ -z "$2" || "$2" == -* ]]; then
@@ -618,7 +618,7 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
     --desktop | -d)
-        CLI_DESKTOP=true
+        CLI_DESKTOP_NOTFICATION=true
         ;;
 
     # Logging and Output
@@ -683,11 +683,11 @@ process_config_options() {
 
     # Override config settings with command line options
     [[ -n "$CLI_BACKGROUND" ]] && BACKGROUND="$CLI_BACKGROUND"
-    [[ -n "$CLI_PUSHOVER" ]] && PUSHOVER="$CLI_PUSHOVER"
+    [[ -n "$CLI_PUSHOVER_NOTFICATION" ]] && PUSHOVER_NOTFICATION="$CLI_PUSHOVER_NOTFICATION"
     [[ -n "$CLI_API_TOKEN" ]] && API_TOKEN="$CLI_API_TOKEN"
     [[ -n "$CLI_USER_KEY" ]] && USER_KEY="$CLI_USER_KEY"
     [[ -n "$CLI_VERBOSE" ]] && VERBOSE="$CLI_VERBOSE"
-    [[ -n "$CLI_DESKTOP" ]] && DESKTOP="$CLI_DESKTOP"
+    [[ -n "$CLI_DESKTOP_NOTFICATION" ]] && DESKTOP_NOTFICATION="$CLI_DESKTOP_NOTFICATION"
     [[ -n "$CLI_URL_FILE" ]] && URL_FILE="$CLI_URL_FILE"
     [[ -n "$CLI_CHECK_INTERVAL" ]] && CHECK_INTERVAL="$CLI_CHECK_INTERVAL"
     [[ -n "$CLI_THRESHOLD" ]] && THRESHOLD="$CLI_THRESHOLD"
