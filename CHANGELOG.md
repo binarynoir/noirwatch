@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - none
 
+## [1.1.1] - 2024-11-13
+
+### Changed
+
+- Updated logging functions to work better cross platform and with older version of bash
+
 ## [1.1.0] - 2024-11-13
 
 ### Changed

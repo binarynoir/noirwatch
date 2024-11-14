@@ -4,11 +4,11 @@
 # Description: Monitors specified websites for changes and sends notifications.
 # Author: John Smith III
 # License: MIT License
-# Version: 1.1.0
+# Version: 1.1.1
 # Last Updated: 2024-11-13
 
 # Script version
-VERSION=1.1.0
+VERSION=1.1.1
 
 # Default configuration file location
 CONFIG_FILE="$HOME/.noirwatchrc"
@@ -39,7 +39,9 @@ USER_KEY=
 # Native desktop notification options
 DESKTOP_NOTFICATION=false
 
-# Verbose mode
+# Log levels
+LOG_LEVELS=("FATAL" "ERROR" "WARN" "INFO" "DEBUG")
+LOG_LEVEL="INFO"
 VERBOSE=false
 
 # Default log level
@@ -51,8 +53,17 @@ YELLOW='\033[0;33m'
 RED_BG='\033[41m'
 NC='\033[0m' # No Color
 
-# Define log levels
-declare -A LOG_LEVELS=(["FATAL"]=0 ["ERROR"]=1 ["WARN"]=2 ["INFO"]=3 ["DEBUG"]=4 ["TRACE"]=5)
+# Function to get log level index
+get_log_level_index() {
+    local level_name=$1
+    for i in "${!LOG_LEVELS[@]}"; do
+        if [[ "${LOG_LEVELS[$i]}" == "$level_name" ]]; then
+            echo "$i"
+            return
+        fi
+    done
+    echo "-1"
+}
 
 # Log messages to screen
 log_to_screen() {
@@ -86,23 +97,24 @@ log_message() {
     local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
 
     # Validate log level name
-    if [[ ! -v LOG_LEVELS[$log_level_name] ]]; then
+    local log_level=$(get_log_level_index "$log_level_name")
+    if [[ "$log_level" -eq -1 ]]; then
         printf "Invalid log level: %s. Setting to INFO.\n" "$log_level_name"
         log_level_name="INFO"
+        log_level=$(get_log_level_index "$log_level_name")
     fi
 
-    # Get the numeric log level
-    local log_level=${LOG_LEVELS[$log_level_name]}
-
     # Validate current log level
-    if [[ ! -v LOG_LEVELS[$LOG_LEVEL] ]]; then
+    local current_log_level=$(get_log_level_index "$LOG_LEVEL")
+    if [[ "$current_log_level" -eq -1 ]]; then
         printf "Invalid current log level. Setting to INFO.\n"
-        LOG_LEVEL=${LOG_LEVELS["INFO"]}
+        LOG_LEVEL="INFO"
+        current_log_level=$(get_log_level_index "$LOG_LEVEL")
     fi
 
     # Log to file if it exists
     if [ -f "$LOG_FILE" ]; then
-        if [ "$log_level" -le "${LOG_LEVELS[$LOG_LEVEL]}" ]; then
+        if [ "$log_level" -le "$current_log_level" ]; then
             printf "%s [%s] %s\n" "$timestamp" "$log_level_name" "$message" >>$LOG_FILE
         fi
     else
@@ -111,7 +123,7 @@ log_message() {
     fi
 
     # Print to screen
-    if [ "$log_level" -le "${LOG_LEVELS[$LOG_LEVEL]}" ]; then
+    if [ "$log_level" -le "$current_log_level" ]; then
         log_to_screen "$timestamp" "$log_level_name" "$message"
     fi
 }
