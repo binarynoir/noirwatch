@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - none
 
+## [1.3.1] - 2024-11-14
+
+### Fixed
+
+- An issue where a 0% change could send a notification
+
 ## [1.3.0] - 2024-11-14
 
 ### Added
