@@ -18,7 +18,9 @@ NoirWatch monitors specified websites for changes and sends notifications. It su
 
 - Bash
 - `curl` for fetching website content
+- `sed` for HTML content normalization
 - `xmllint` for HTML content normalization
+- `md5sum` for change detection
 - `jq` for JSON parsing (optional, for Pushover notifications)
 - `powershell` for Windows desktop notifications
 - `notify-send` for Linux desktop notifications

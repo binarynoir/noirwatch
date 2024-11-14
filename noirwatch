@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
 # Script Name: NoirWatch
-# Description: Monitors specified websites for changes and sends notifications.
+# Description: Monitor specified websites for changes and send notifications.
 # Author: John Smith III
 # License: MIT License
-# Version: 1.2.0
+# Version: 1.3.0
 # Last Updated: 2024-11-14
 
 # Script version
-VERSION=1.2.0
+VERSION=1.3.0
 
 # Default configuration file location
 CONFIG_FILE="$HOME/.noirwatchrc"
@@ -21,6 +21,7 @@ CACHE_DIR="/tmp/noirwatch_cache"
 
 # Default log file location
 LOG_FILE="$CACHE_DIR/noirwatch.log"
+INIT_FORCE=false
 
 # Initialize URLS as an empty array
 URLS=()
@@ -35,12 +36,12 @@ THRESHOLD=0
 BACKGROUND=false
 
 # Pushover notification options
-PUSHOVER_NOTFICATION=false
-API_TOKEN=
-USER_KEY=
+PUSHOVER_NOTIFICATION=false
+PUSHOVER_API_TOKEN=
+PUSHOVER_USER_KEY=
 
 # Native desktop notification options
-DESKTOP_NOTFICATION=false
+DESKTOP_NOTIFICATION=false
 
 # Log levels
 LOG_LEVELS=("FATAL" "ERROR" "WARN" "INFO" "DEBUG")
@@ -57,50 +58,63 @@ NC='\033[0m' # No Color
 # Configuration and Initialization Functions
 # ==============================
 
+# Initialize the configuration file
 init_config() {
+    # Check if the configuration file already exists
+    if [ -f "$CONFIG_FILE" ]; then
+        if [ "$INIT_FORCE" = true ]; then
+            echo "FORCE is true. Replacing the existing configuration file..."
+        else
+            read -p "Configuration file $CONFIG_FILE already exists. Do you want to replace it? (y/n): " choice
+            case "$choice" in
+            y | Y)
+                echo "Replacing the existing configuration file..."
+                ;;
+            n | N)
+                echo "Keeping the existing configuration file."
+                return
+                ;;
+            *)
+                echo "Invalid choice. Keeping the existing configuration file."
+                return
+                ;;
+            esac
+        fi
+    fi
+
     # Create the configuration content
     config_content=$(
         cat <<EOF
 # NoirWatch Configuration File
 # This file contains the default settings for the NoirWatch script.
-
 # General Settings
-# Default configuration file location
 CONFIG_FILE="$CONFIG_FILE"
-# Default URL list file location
 URL_FILE="$URL_FILE"
-# Master directory to store all cache files
 CACHE_DIR="$CACHE_DIR"
-# Default log file location
 LOG_FILE="$LOG_FILE"
-
 # Monitoring Settings
-# Default check interval (in minutes)
 CHECK_INTERVAL=$CHECK_INTERVAL
-# Default threshold percentage (higher is less sensitive)
-THRESHOLD=$THRESHOLD  
-# Default running in the background
+THRESHOLD=$THRESHOLD
 BACKGROUND=$BACKGROUND
-
 # Notification Settings
-# Pushover notification options
-PUSHOVER_NOTFICATION=$PUSHOVER_NOTFICATION
-API_TOKEN="$API_TOKEN"
-USER_KEY="$USER_KEY"
-# Native desktop notification options
-DESKTOP_NOTFICATION=$DESKTOP_NOTFICATION
-
+PUSHOVER_NOTIFICATION=$PUSHOVER_NOTIFICATION
+PUSHOVER_API_TOKEN="$PUSHOVER_API_TOKEN"
+PUSHOVER_USER_KEY="$PUSHOVER_USER_KEY"
+DESKTOP_NOTIFICATION=$DESKTOP_NOTIFICATION
 # Logging Settings
-# Verbose mode
 VERBOSE=$VERBOSE
-# Default log level
 LOG_LEVEL="$LOG_LEVEL"
 EOF
     )
 
     # Write the configuration content to the file
-    echo "$config_content" >"$CONFIG_FILE"
+    if ! echo "$config_content" >"$CONFIG_FILE"; then
+        log_message "ERROR" "Failed to create configuration file at $CONFIG_FILE"
+        exit 1
+    fi
+
     log_message "INFO" "Default configuration file created at $CONFIG_FILE"
+    exit 0
 }
 
 # Load configuration
@@ -126,11 +140,13 @@ parse_arguments() {
         --version | -V)
             show_version
             ;;
-
         # Configuration and Initialization
         --url-file | -f)
             if [[ -z "$2" || "$2" == -* ]]; then
                 printf "Error: --url-file requires a value\n"
+                exit 1
+            elif [[ ! -f "$2" ]]; then
+                printf "Error: URL file not found: %s\n" "$2"
                 exit 1
             fi
             CLI_URL_FILE="$2"
@@ -140,12 +156,18 @@ parse_arguments() {
             if [[ -z "$2" || "$2" == -* ]]; then
                 printf "Error: --config requires a value\n"
                 exit 1
+            elif [[ ! -f "$2" ]]; then
+                printf "Error: Config file not found: %s\n" "$2"
+                exit 1
             fi
             CONFIG_FILE="$2"
             shift
             ;;
         --init | -I)
             INIT=true
+            ;;
+        --force-init | -F)
+            INIT_FORCE=true
             ;;
         --interval | -i)
             if [[ -z "$2" || "$2" == -* ]]; then
@@ -169,7 +191,6 @@ parse_arguments() {
         --show-config-file | -S)
             SHOW_CONFIG_FILE=true
             ;;
-
         # URL Management
         --list-urls | -U)
             SHOW_URL=true
@@ -177,20 +198,19 @@ parse_arguments() {
         --clean | -C)
             CLEAN=true
             ;;
-
         # Execution Options
         --background | -b)
             CLI_BACKGROUND=true
             ;;
         --pushover | -p)
-            CLI_PUSHOVER_NOTFICATION=true
+            CLI_PUSHOVER_NOTIFICATION=true
             ;;
         --api-token | -a)
             if [[ -z "$2" || "$2" == -* ]]; then
                 printf "Error: --api-token requires a value\n"
                 exit 1
             fi
-            CLI_API_TOKEN="$2"
+            CLI_PUSHOVER_API_TOKEN="$2"
             shift
             ;;
         --user-key | -u)
@@ -198,13 +218,12 @@ parse_arguments() {
                 printf "Error: --user-key requires a value\n"
                 exit 1
             fi
-            CLI_USER_KEY="$2"
+            CLI_PUSHOVER_USER_KEY="$2"
             shift
             ;;
         --desktop | -d)
-            CLI_DESKTOP_NOTFICATION=true
+            CLI_DESKTOP_NOTIFICATION=true
             ;;
-
         # Logging and Output
         --verbose | -v)
             CLI_VERBOSE=true
@@ -228,7 +247,6 @@ parse_arguments() {
             CLI_LOG_LEVEL_OPTION="$2"
             shift
             ;;
-
         # Process Management
         --killall | -K)
             killall_script
@@ -244,15 +262,14 @@ parse_arguments() {
         --list-pids | -P)
             list_instances
             ;;
-
         # End of Options
         --)
             options_processed=true
             ;;
-        # All remaining input is URLS
+        # All remaining input is URLs
         *)
             if [[ "$1" == -* ]]; then
-                printf "Error: Unknown option: %s\n" $1
+                printf "Error: Unknown option: %s\n" "$1"
                 exit 1
             fi
             URLS+=("$1")
@@ -268,11 +285,11 @@ process_config_arguments() {
 
     # Override config settings with command line options
     [[ -n "$CLI_BACKGROUND" ]] && BACKGROUND="$CLI_BACKGROUND"
-    [[ -n "$CLI_PUSHOVER_NOTFICATION" ]] && PUSHOVER_NOTFICATION="$CLI_PUSHOVER_NOTFICATION"
-    [[ -n "$CLI_API_TOKEN" ]] && API_TOKEN="$CLI_API_TOKEN"
-    [[ -n "$CLI_USER_KEY" ]] && USER_KEY="$CLI_USER_KEY"
+    [[ -n "$CLI_PUSHOVER_NOTIFICATION" ]] && PUSHOVER_NOTIFICATION="$CLI_PUSHOVER_NOTIFICATION"
+    [[ -n "$CLI_PUSHOVER_API_TOKEN" ]] && PUSHOVER_API_TOKEN="$CLI_PUSHOVER_API_TOKEN"
+    [[ -n "$CLI_PUSHOVER_USER_KEY" ]] && PUSHOVER_USER_KEY="$CLI_PUSHOVER_USER_KEY"
     [[ -n "$CLI_VERBOSE" ]] && VERBOSE="$CLI_VERBOSE"
-    [[ -n "$CLI_DESKTOP_NOTFICATION" ]] && DESKTOP_NOTFICATION="$CLI_DESKTOP_NOTFICATION"
+    [[ -n "$CLI_DESKTOP_NOTIFICATION" ]] && DESKTOP_NOTIFICATION="$CLI_DESKTOP_NOTIFICATION"
     [[ -n "$CLI_URL_FILE" ]] && URL_FILE="$CLI_URL_FILE"
     [[ -n "$CLI_CHECK_INTERVAL" ]] && CHECK_INTERVAL="$CLI_CHECK_INTERVAL"
     [[ -n "$CLI_THRESHOLD" ]] && THRESHOLD="$CLI_THRESHOLD"
@@ -321,6 +338,7 @@ show_help() {
     printf "  -t, --threshold <percentage> Set the threshold percentage for detecting changes. Higher values mean fewer notifications for minor changes. (default: %d%%)\n" "$THRESHOLD"
     printf "  -c, --config <config_file> Specify a custom configuration file. (default: %s)\n" "$CONFIG_FILE"
     printf "  -I, --init                Initialize the configuration file.\n"
+    printf "  -f, --force               Force initialize of the configuration file if one exists.\n"
     printf "  -s, --show-config         Show the configuration settings.\n"
     printf "  -S, --show-config-file    Show the configuration file.\n"
     # URL Management
@@ -328,7 +346,7 @@ show_help() {
     printf "  -f, --url-file <file>     Specify a file containing a list of URLs to monitor. (default: %s)\n" "$DEFAULT_URL_FILE"
     printf "  -U, --list-urls           List all watched URLs.\n"
     printf "  -C, --clean               Delete all cached files.\n"
-    # Execution Options
+    # Execution OptionsA
     printf "\nExecution Options:\n"
     printf "  -b, --background          Run the script in the background.\n"
     printf "  -p, --pushover            Send Pushover notifications.\n"
@@ -358,16 +376,16 @@ show_help() {
 
 # Show configuration information
 show_config() {
-    [ -n "$CONFIG_FILE" ] && log_message "INFO" "Configurtaion file: $CONFIG_FILE"
+    [ -n "$CONFIG_FILE" ] && log_message "INFO" "Configuration file: $CONFIG_FILE"
     [ -n "$URL_FILE" ] && log_message "INFO" "URL file: $URL_FILE"
     [ -n "$CACHE_DIR" ] && log_message "INFO" "Cache directory: $CACHE_DIR"
     [ -n "$LOG_FILE" ] && log_message "INFO" "Log file: $LOG_FILE"
     [ -n "$CHECK_INTERVAL" ] && log_message "INFO" "Check interval: $CHECK_INTERVAL min(s)"
     [ -n "$BACKGROUND" ] && log_message "INFO" "Background: $BACKGROUND"
-    [ -n "$PUSHOVER_NOTFICATION" ] && log_message "INFO" "Pushover ebabled: $PUSHOVER_NOTFICATION"
-    [ -n "$DESKTOP_NOTFICATION" ] && log_message "INFO" "Desktop notification ebabled: $DESKTOP_NOTFICATION"
+    [ -n "$PUSHOVER_NOTIFICATION" ] && log_message "INFO" "Pushover enabled: $PUSHOVER_NOTIFICATION"
+    [ -n "$DESKTOP_NOTIFICATION" ] && log_message "INFO" "Desktop notification enabled: $DESKTOP_NOTIFICATION"
     [ -n "$LOG_LEVEL" ] && log_message "INFO" "Log Level: $LOG_LEVEL"
-    [ -n "$VERBOSE" ] && log_message "INFO" "Verbose ebabled: $VERBOSE"
+    [ -n "$VERBOSE" ] && log_message "INFO" "Verbose enabled: $VERBOSE"
 }
 
 # Show configuration file
@@ -387,6 +405,17 @@ show_config_file() {
 # Utility Functions
 # ==============================
 
+# Function to check for required command-line utilities
+check_dependencies() {
+    local dependencies=("xmllint" "curl" "sed" "md5sum")
+    for cmd in "${dependencies[@]}"; do
+        if ! command -v "$cmd" &>/dev/null; then
+            echo "Error: $cmd is not installed. Please install it and try again."
+            exit 1
+        fi
+    done
+}
+
 # Function to get log level index
 get_log_level_index() {
     local level_name=$1
@@ -399,15 +428,13 @@ get_log_level_index() {
     echo "-1"
 }
 
-# Log messages to screen
-log_to_screen() {
+# Log messages to console
+log_to_console() {
     local timestamp=$1
     local log_level_name=$2
     local message=$3
     local output_message="$message"
-
     [[ "$VERBOSE" = true ]] && output_message="$timestamp [$log_level_name] $message"
-
     case $log_level_name in
     "FATAL")
         printf "${RED_BG}%s${NC}\n" "$output_message"
@@ -449,20 +476,20 @@ log_message() {
     # Log to file if it exists
     if [ -f "$LOG_FILE" ]; then
         if [ "$log_level" -le "$current_log_level" ]; then
-            printf "%s [%s] %s\n" "$timestamp" "$log_level_name" "$message" >>$LOG_FILE
+            printf "%s [%s] %s\n" "$timestamp" "$log_level_name" "$message" >>"$LOG_FILE"
         fi
     else
         # Print error to screen if log file does not exist
-        log_to_screen "$timestamp" "ERROR" "Error: Logfile does not exist: $LOG_FILE"
+        log_to_console "$timestamp" "ERROR" "Error: Logfile does not exist: $LOG_FILE"
     fi
 
     # Print to screen
     if [ "$log_level" -le "$current_log_level" ]; then
-        log_to_screen "$timestamp" "$log_level_name" "$message"
+        log_to_console "$timestamp" "$log_level_name" "$message"
     fi
 }
 
-# log the log file to the screen
+# Log the log file to the screen
 show_log() {
     if [ -f "$LOG_FILE" ]; then
         cat "$LOG_FILE"
@@ -573,19 +600,18 @@ send_pushover_notification() {
         log_message "DEBUG" "    Url: $website_url"
         log_message "DEBUG" "    Message: $message"
 
-        # Check if API_TOKEN is set
+        # Check if PUSHOVER_API_TOKEN is set
         if [[ -z "$PUSHOVER_API_TOKEN" ]]; then
-            log_message "ERROR" "Error: API_TOKEN is not set."
+            log_message "ERROR" "Error: PUSHOVER_API_TOKEN is not set."
             return 1
         fi
 
         # Check if USER_KEY is set
         if [[ -z "$PUSHOVER_USER_KEY" ]]; then
-            log_message "ERROR" "Error: USER_KEY is not set."
+            log_message "ERROR" "Error: PUSHOVER_USER_KEY is not set."
             return 1
         fi
-        log_message "DEBUG" "    API_TOKEN: $PUSHOVER_API_TOKEN"
-        log_message "DEBUG" "    USER_KEY: $PUSHOVER_USER_KEY"
+
         response=$(curl -s \
             --form-string "token=$PUSHOVER_API_TOKEN" \
             --form-string "user=$PUSHOVER_USER_KEY" \
@@ -603,6 +629,10 @@ send_pushover_notification() {
 
         local status
         status=$(echo "$response" | jq -r '.status')
+        if [[ $? -ne 0 ]]; then
+            log_message "ERROR" "Failed to parse Pushover API response: $response"
+            return 1
+        fi
 
         if [[ "$status" -ne 1 ]]; then
             log_message "ERROR" "Pushover API returned an error: $response"
@@ -665,15 +695,33 @@ kill_instance() {
 # Normalize HTML content
 normalize_content() {
     local file=$1
+    local temp_file=$(mktemp)
+
     # Remove scripts, styles, ads, promos, and other dynamic content
-    cat "$file" |
-        sed -E 's/<(script|style|footer|header|aside|nav|iframe|noscript)[^>]*>.*<\/\1>//g' |                     # Remove scripts, styles, and other unwanted tags
-        sed -E 's/<[^>]*class="[^"]*(ad|promo|banner|sponsored|timestamp|footer|header|sidebar)[^"]*"[^>]*>//g' | # Remove ad-like elements by class
-        sed -E 's/<[^>]*id="[^"]*(ad|promo|banner|sponsored|timestamp|footer|header|sidebar)[^"]*"[^>]*>//g' |    # Remove ad-like elements by id
-        sed -E 's/<(div|span)[^>]*(ad|promo|banner|sponsored|timestamp|footer|header|sidebar)[^>]*>.*<\/\1>//g' | # Remove ad-like divs and spans
-        xmllint --html --xpath "//main|//article|//section" - 2>/dev/null |                                       # Extract main content
-        # Remove HTML tags, comments, and extra whitespace
-        sed -e 's/<[^>]*>//g' -e 's/<!--.*-->//g' -e 's/[[:space:]]\+/ /g'
+    cat "$file" | xmllint --html --xpath "//*[not(self::script or self::style or self::footer or self::header or self::aside or self::nav or self::iframe or self::noscript or contains(@class, 'ad') or contains(@class, 'promo') or contains(@class, 'banner') or contains(@class, 'sponsored') or contains(@class, 'timestamp') or contains(@class, 'footer') or contains(@class, 'header') or contains(@class, 'sidebar') or contains(@id, 'ad') or contains(@id, 'promo') or contains(@id, 'banner') or contains(@id, 'sponsored') or contains(@id, 'timestamp') or contains(@id, 'footer') or contains(@id, 'header') or contains(@id, 'sidebar'))]" - 2>/dev/null >"$temp_file"
+
+    # Extract main content using xmllint
+    cat "$temp_file" | xmllint --html --xpath "//main | //article | //section" - 2>/dev/null >"$temp_file"
+
+    # Remove HTML tags, comments, and extra whitespace
+    cat "$temp_file" | sed -e 's/<[^>]*>//g' -e 's/<!--.*-->//g' -e 's/[[:space:]]\+/ /g' -e 's/^[[:space:]]*//g' -e 's/[[:space:]]*$//g'
+
+    # Clean up temporary file
+    rm "$temp_file"
+}
+
+# Calculate change percentage
+calculate_change_percentage() {
+    local previous_file=$1
+    local normalized_file=$2
+    local diff_output=$(diff -U 0 "$previous_file" "$normalized_file" | grep -v ^@)
+    local diff_percent=$(echo "$diff_output" | grep -c '^[+-]')
+    local total_lines=$(wc -l <"$normalized_file")
+    local change_percent=0
+    if [ "$total_lines" -ne 0 ]; then
+        change_percent=$((diff_percent * 100 / total_lines))
+    fi
+    echo "$change_percent"
 }
 
 # Check the website for changes
@@ -689,10 +737,10 @@ check_website() {
     local hash_file="$CACHE_DIR/hash_$encoded_url.txt"
 
     log_message "DEBUG" "Checking URL: $clean_url"
-    log_message "DEBUG" "  Submitted URL: $website_url"
-    log_message "DEBUG" "  Global threshold: $THRESHOLD%"
-    log_message "DEBUG" "  Override threshold ${prefixed_threshold:+$prefixed_threshold%}${prefixed_threshold:-none}"
-    log_message "DEBUG" "  Applied threshold: $applied_threshold%"
+    log_message "DEBUG" " Submitted URL: $website_url"
+    log_message "DEBUG" " Global threshold: $THRESHOLD%"
+    log_message "DEBUG" " Override threshold ${prefixed_threshold:+$prefixed_threshold%}${prefixed_threshold:-none}"
+    log_message "DEBUG" " Applied threshold: $applied_threshold%"
 
     # Fetch the current content of the website
     if ! curl -s "$clean_url" >"$current_file"; then
@@ -717,31 +765,20 @@ check_website() {
         if [ "$current_hash" != "$previous_hash" ]; then
             # Calculate the difference percentage
             if [ -f "$previous_file" ]; then
-                local diff_percent=$(diff -U 0 "$previous_file" "$normalized_file" | grep -v ^@ | wc -l)
-                local total_lines=$(wc -l <"$normalized_file")
-                local change_percent=0
-                if [ "$total_lines" -ne 0 ]; then
-                    change_percent=$((diff_percent * 100 / total_lines))
-                fi
+                local change_percent=$(calculate_change_percentage "$previous_file" "$normalized_file")
 
-                # Ensure change_percent is not null or empty
-                if [ -z "$change_percent" ] || [ "$change_percent" = "" ]; then
-                    change_percent=0
-                fi
-
-                log_message "DEBUG" "  Total lines: $total_lines"
-                log_message "DEBUG" "  Change percent: $change_percent%"
+                log_message "DEBUG" " Total lines: $(wc -l <"$normalized_file")"
+                log_message "DEBUG" " Change percent: $change_percent%"
 
                 # Ensure both variables are integers before comparison
                 if [ "$change_percent" -ge "$applied_threshold" ] 2>/dev/null; then
                     local message="The website $clean_url has changed by $change_percent%!"
                     log_message "WARN" "$message"
-
                     send_pushover_notification "NoirWatch Alert" "$clean_url" "$message" $clean_url
                     send_desktop_notification "NoirWatch Alert" "$message"
                 else
                     log_message "DEBUG" "  Changes detected for: $clean_url"
-                    log_message "DEBUG" "  changes are below the threshold: ($change_percent%)"
+                    log_message "DEBUG" "  Changes are below the threshold: ($change_percent%)"
                 fi
             else
                 log_message "DEBUG" "No previous content found for: $clean_url"
@@ -786,6 +823,9 @@ run_check() {
 # ==============================
 # Main Script Execution
 # ==============================
+
+# Check for required dependencies
+check_dependencies
 
 # Call the function to parse arguments
 parse_arguments "$@"
