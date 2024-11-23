@@ -1,0 +1,82 @@
+name: Release Application
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release pushed tag
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: "${{ github.ref_name }}" # Sets VERSION based on tag
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+        run: |
+          gh release create "$tag" \
+              --repo="$GITHUB_REPOSITORY" \
+              --title="${GITHUB_REPOSITORY#*/} ${tag#v}" \
+              --generate-notes || exit 1
+
+      - name: Get release ID
+        id: get_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+        run: |
+          release_id=$(gh release view "$tag" --json id --jq '.id') || exit 1
+          echo "release_id=$release_id" >> $GITHUB_ENV
+
+      - name: Download tarball
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          release_id: ${{ env.release_id }}
+        run: |
+          curl -L -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github.v3.raw" \
+          -o "noirwatch-${{ env.VERSION }}.tar.gz" \
+          "https://github.com/binarynoir/noirwatch/archive/refs/tags/${{ env.VERSION }}.tar.gz" || exit 1
+
+      - name: Calculate SHA-256 checksum
+        id: calculate_sha
+        run: |
+          SHA256_SUM=$(sha256sum "noirwatch-${{ env.VERSION }}.tar.gz" | awk '{ print $1 }') || exit 1
+          echo "SHA256_SUM=$SHA256_SUM" >> $GITHUB_ENV
+
+      - name: Checkout Homebrew repository
+        uses: actions/checkout@v3
+        with:
+          repository: binarynoir/homebrew-noirwatch
+          path: homebrew-noirwatch
+          persist-credentials: false
+
+      - name: Set up Git credentials
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Modify noirwatch.rb
+        env:
+          SHA256_SUM: ${{ env.SHA256_SUM }}
+        run: |
+          sed -i "s|url \".*\"|url \"https://github.com/binarynoir/noirwatch/archive/refs/tags/${{ env.VERSION }}.tar.gz\"|" homebrew-noirwatch/noirwatch.rb
+          sed -i "s|sha256 \".*\"|sha256 \"${{ env.SHA256_SUM }}\"|" homebrew-noirwatch/noirwatch.rb
+
+      - name: Commit and push changes
+        run: |
+          cd homebrew-noirwatch
+          git add noirwatch.rb
+          git commit -m "Update noirwatch.rb for version ${{ env.VERSION }}"
+          git push https://x-access-token:${{ secrets.TARGET_REPO_PAT }}@github.com/binarynoir/homebrew-noirwatch HEAD:main || exit 1
+        env:
+          TARGET_REPO_PAT: ${{ secrets.TARGET_REPO_PAT }}

@@ -1,0 +1,121 @@
+.TH NoirWatch 1 "November 23, 2024" "Version 1.0.0" "User Commands"
+.SH NAME
+NoirWatch \- Monitor specified websites for changes and send notifications.
+.SH SYNOPSIS
+.B noirwatch
+.RI [ options ] " <url>..."
+.SH DESCRIPTION
+.B NoirWatch
+is a script designed to monitor specified websites for changes and send notifications via desktop or Pushover. It supports various configuration options and can run as a background service.
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Display this help message.
+.TP
+.B \-V, \-\-version
+Display the application version.
+.TP
+.B \-c, \-\-config <config_file>
+Specify a custom configuration file (default: $HOME/.config/noirwatch.conf).
+.TP
+.B \-I, \-\-init
+Initialize the configuration file.
+.TP
+.B \-F, \-\-force\-init
+Force initialize the configuration file if one exists.
+.TP
+.B \-s, \-\-show\-config
+Show the configuration settings.
+.TP
+.B \-S, \-\-show\-config\-file
+Show the configuration file.
+.TP
+.B \-C, \-\-clean
+Delete all cached files.
+.TP
+.B \-k, \-\-cache\-dir <path>
+Specify a custom cache directory.
+.TP
+.B \-p, \-\-pushover
+Send Pushover notifications.
+.TP
+.B \-a, \-\-api\-token <token>
+Specify the API token for Pushover notifications.
+.TP
+.B \-u, \-\-user\-key <key>
+Specify the user key for Pushover notifications.
+.TP
+.B \-d, \-\-desktop
+Send desktop notifications using AppleScript.
+.TP
+.B \-v, \-\-verbose
+Enable verbose output.
+.TP
+.B \-l, \-\-log
+Log the log file to the screen.
+.TP
+.B \-o, \-\-output <file>
+Specify a custom log file location.
+.TP
+.B \-L, \-\-log\-level <level>
+Set the log level (FATAL, ERROR, WARN, INFO, DEBUG).
+.TP
+.B \-f, \-\-url\-file <file>
+Specify a file containing a list of URLs to monitor (default: $HOME/.config/noirwatch_urls.conf).
+.TP
+.B \-U, \-\-list\-urls
+List all watched URLs.
+.TP
+.B \-i, \-\-interval <minutes>
+Set the interval between checks (default is 15 minutes).
+.TP
+.B \-t, \-\-threshold <percentage>
+Set the threshold percentage for detecting changes. Higher values mean fewer notifications for minor changes (default: 0%).
+.TP
+.B \-T, \-\-timeout <seconds>
+Set the timeout for ping and DNS tests (default: 5 seconds).
+.TP
+.B \-r, \-\-start
+Start the network check service in the background.
+.TP
+.B \-t, \-\-stop
+Stop the network check service.
+.TP
+.B \-z, \-\-status
+Check the current status of the network check service.
+.SH EXAMPLES
+.TP
+Run interactively with default settings:
+.B noirwatch 'https://example.com'
+.TP
+Specify a threshold for a specific URL:
+.B noirwatch '[15]https://example.com'
+.TP
+Start the service with URLs:
+.B noirwatch --start 'https://example.com'
+.TP
+Start the service with a URL file:
+.B noirwatch --start --url-file '/path/to/file'
+.TP
+Check service status:
+.B noirwatch --status
+.TP
+Stop the service:
+.B noirwatch --stop
+.SH FILES
+.TP
+$HOME/.config/noirwatch.conf
+Default configuration file.
+.TP
+$HOME/.config/noirwatch_urls.conf
+Default URL list file.
+.TP
+/tmp/noirwatch_cache
+Directory to store all cache files.
+.TP
+/tmp/noirwatch_cache/noirwatch.log
+Default log file.
+.SH AUTHOR
+John Smith III
+.SH LICENSE
+MIT License
