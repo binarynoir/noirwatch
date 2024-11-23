@@ -7,7 +7,7 @@
 
 # App version and name
 APP_NAME="NoirWatch"
-VERSION=1.0.0
+VERSION=1.0.1
 LAST_UPDATED="2024-11-23"
 
 # ==============================
@@ -963,6 +963,13 @@ process_arguments() {
     # Override URL settings with command line options
     [[ -n "$CLI_URL_FILE" ]] && URL_FILE="$CLI_URL_FILE"
     process_urls
+
+    # Check if the array is empty
+    if [ ${#URLS[@]} -eq 0 ]; then
+        log_message "ERROR" "Error: No URLS have been provided."
+        exit 1
+    fi
+
     [[ "$SHOW_URL" = true ]] && show_urls && exit 0
 }
 
