@@ -296,7 +296,6 @@ LOG_FILE="/tmp/noirwatch_cache/noirwatch.log"
 CONFIG_FILE="$HOME/.config/noirwatch.conf"
 URL_FILE="$HOME/.config/noirwatch_urls.conf"
 CHECK_INTERVAL=15
-THRESHOLD=0
 TIMEOUT=5
 PUSHOVER_NOTIFICATION=false
 PUSHOVER_API_TOKEN=""
@@ -304,6 +303,7 @@ PUSHOVER_USER_KEY=""
 DESKTOP_NOTIFICATION=true
 VERBOSE=false
 LOG_LEVEL="INFO"
+THRESHOLD=0
 ```
 
 ## Options
