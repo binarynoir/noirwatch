@@ -7,7 +7,7 @@
 
 # App version and name
 APP_NAME="NoirWatch"
-VERSION=1.0.1
+VERSION=1.0.2
 LAST_UPDATED="2024-11-23"
 
 # ==============================
@@ -78,7 +78,7 @@ check_dependencies() {
     local dependencies=("cat" "curl" "nslookup" "ping" "sed" "xmllint")
     for cmd in "${dependencies[@]}"; do
         if ! command -v "$cmd" &>/dev/null; then
-            printf "Error: $cmd is not installed. Please install it and try again.\n"
+            log_message "FATAL" "Error: $cmd is not installed. Please install it and try again." "$LINENO"
             exit 1
         fi
     done
@@ -192,7 +192,7 @@ log_message() {
 # Function: Initialize the log file
 init_log() {
     if [ -z "$LOG_FILE" ]; then
-        log_message "ERROR" "LOG_FILE variable is not set." "$LINENO"
+        log_message "FATAL" "LOG_FILE variable is not set." "$LINENO"
         exit 1
     fi
 
@@ -201,13 +201,13 @@ init_log() {
         if touch "$LOG_FILE" 2>/dev/null; then
             log_message "DEBUG" "Created log file: $LOG_FILE" "$LINENO"
         else
-            log_message "ERROR" "Failed to create log file: $LOG_FILE" "$LINENO"
+            log_message "FATAL" "Failed to create log file: $LOG_FILE" "$LINENO"
             exit 1
         fi
     else
         # Check if the log file is writable
         if [ ! -w "$LOG_FILE" ]; then
-            log_message "ERROR" "Log file exists but is not writable: $LOG_FILE" "$LINENO"
+            log_message "FATAL" "Log file exists but is not writable: $LOG_FILE" "$LINENO"
             exit 1
         fi
         log_message "DEBUG" "Log file already exists and is writable: $LOG_FILE" "$LINENO"
@@ -286,19 +286,19 @@ delete_cache() {
 
     # Ensure CACHE_DIR is defined and not empty
     if [[ -z "$CACHE_DIR" ]]; then
-        log_message "ERROR" "CACHE_DIR is not set. Unable to proceed." "$LINENO"
+        log_message "FATAL" "CACHE_DIR is not set. Unable to proceed." "$LINENO"
         exit 1
     fi
 
     # Ensure CACHE_DIR exists
     if [[ ! -d "$CACHE_DIR" ]]; then
-        log_message "ERROR" "Cache directory '$CACHE_DIR' does not exist." "$LINENO"
+        log_message "FATAL" "Cache directory '$CACHE_DIR' does not exist." "$LINENO"
         exit 1
     fi
 
     # Prevent deletion of critical directories
     if is_critical_directory "$CACHE_DIR"; then
-        log_message "ERROR" "Attempted to delete a critical directory '$CACHE_DIR'. Aborting." "$LINENO"
+        log_message "FATAL" "Attempted to delete a critical directory '$CACHE_DIR'. Aborting." "$LINENO"
         exit 1
     fi
 
@@ -307,7 +307,7 @@ delete_cache() {
         log_message "INFO" "Success: All cached files in '$CACHE_DIR' deleted." "$LINENO"
         exit 0
     else
-        log_message "ERROR" "Failed to delete cached files in '$CACHE_DIR'." "$LINENO"
+        log_message "FATAL" "Failed to delete cached files in '$CACHE_DIR'." "$LINENO"
         exit 1
     fi
 }
@@ -440,7 +440,7 @@ start_service() {
             log_message "DEBUG" "Service started with PID $service_pid." "$LINENO"
         else
             # If the process failed to start, clean up and exit
-            log_message "ERROR" "Failed to start service. PID is not valid." "$LINENO"
+            log_message "FATAL" "Failed to start service. PID is not valid." "$LINENO"
             cleanup_pid
             exit 1
         fi
@@ -630,7 +630,7 @@ EOF
 
     # Write the configuration content to the file
     if ! echo "$config_content" >"$CONFIG_FILE"; then
-        log_message "ERROR" "Failed to create configuration file at $CONFIG_FILE" "$LINENO"
+        log_message "FATAL" "Failed to create configuration file at $CONFIG_FILE" "$LINENO"
         exit 1
     fi
 
@@ -935,7 +935,7 @@ process_arguments() {
     [[ -n "$CLI_CACHE_DIR" ]] && CACHE_DIR="$CLI_CACHE_DIR"
 
     if is_critical_directory "$CACHE_DIR"; then
-        log_message "ERROR" "Attempted to set cache path to a critical directory '$CACHE_DIR'. Aborting." "$LINENO"
+        log_message "FATAL" "Attempted to set cache path to a critical directory '$CACHE_DIR'. Aborting." "$LINENO"
         exit 1
     fi
 
@@ -981,7 +981,7 @@ process_arguments() {
 process_url_file() {
     local file=$1
     if [ ! -f "$file" ]; then
-        log_message "INFO" "URL file not found: $file" "$LINENO"
+        log_message "FATAL" "URL file not found: $file" "$LINENO"
         exit 1
     fi
     while IFS= read -r URL; do
