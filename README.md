@@ -361,6 +361,15 @@ LOG_LEVEL="INFO"
 
 To run the tests for the `NoirWatch` script, follow these steps:
 
+### Prerequisites
+
+Ensure you have the following installed on your system:
+
+- Bash
+- Git (for cloning the repository)
+
+### Steps to Run the Tests
+
 1. **Navigate to the Test Directory**:
 
    ```bash
@@ -391,19 +400,34 @@ To run the tests for the `NoirWatch` script, follow these steps:
    http://example.org
    ```
 
-4. **Run the Test Script:**
+4. **Make the test script executable**:
+
+   ```bash
+   chmod +x test.sh
+   ```
+
+5. **Run the Test Script:**
 
    ```bash
    ./test_script.sh
    ```
 
-5. **Clean Up Test Files (optional):**
+6. **Clean Up Test Files (optional):**
 
    ```bash
-   rm -f ./test_noirwatch.conf ./test_urls.conf
    rm -rf ./test_cache
    rm -f ./test_noirwatch.log
    ```
+
+### Summary
+
+The `test.sh` script will:
+
+1. Create a test configuration file (default or custom).
+2. Run various tests to check the functionality of NoirWatch, including configuration initialization, cache directory creation, log file creation, and website monitoring.
+3. Clean up the test files and directories after the tests are completed, except for the custom configuration file if it was passed in.
+
+Follow these instructions to ensure that NoirWatch is functioning correctly. If you encounter any issues, please open an issue or submit a pull request on the GitHub repository.
 
 ## Releases
 
