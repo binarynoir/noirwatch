@@ -653,7 +653,7 @@ show_config() {
 }
 
 # ==============================
-# Help and Configuration Display Functions
+# Help Functions
 # ==============================
 
 # Function: Show help message
@@ -701,8 +701,8 @@ show_help() {
     # Network Check Configuration
     printf "\nNetwork Check Configuration:\n"
     printf "  -i, --interval <minutes>    Set the interval between checks (default is %d minutes).\n" "$CHECK_INTERVAL"
-    printf "  -t, --threshold <percentage> Set the threshold percentage for detecting changes. Higher values mean fewer notifications for minor changes. (default: %d%%)\n" "$THRESHOLD"
     printf "  -T, --timeout <seconds>     Set the timeout for ping and DNS tests (default: %d seconds).\n" "${DNS_TEST_TIMEOUT:-5}"
+    printf "  -t, --threshold <percentage> Set the threshold percentage for detecting changes. Higher values mean fewer notifications for minor changes. (default: %d%%)\n" "$THRESHOLD"
 
     # Process Management Functions
     printf "\nProcess Management:\n"
@@ -733,7 +733,6 @@ show_help() {
     printf "  Stop the service:\n"
     printf "    %s --stop\n" "$(basename "$0")"
     printf "\n"
-    printf "  URL Threshold Prefix:\n"
 
     show_version
     exit 0
@@ -810,6 +809,7 @@ parse_arguments() {
             CLI_CACHE_DIR="$2"
             shift
             ;;
+
         # Execution Options
         --pushover | -p)
             CLI_PUSHOVER_NOTIFICATION=true
@@ -867,18 +867,10 @@ parse_arguments() {
         # Network Check Configuration
         --interval | -i)
             if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --interval requires a value\n"
+                printf "Error: --interval requires a value\n" >&2
                 exit 1
             fi
             CLI_CHECK_INTERVAL="$2"
-            shift
-            ;;
-        --threshold | -t)
-            if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --threshold requires a value\n"
-                exit 1
-            fi
-            CLI_THRESHOLD="$2"
             shift
             ;;
         --timeout | -T)
@@ -891,6 +883,14 @@ parse_arguments() {
                 exit 1
             fi
             CLI_TIMEOUT="$2"
+            shift
+            ;;
+        --threshold | -t)
+            if [[ -z "$2" || "$2" == -* ]]; then
+                printf "Error: --threshold requires a value\n"
+                exit 1
+            fi
+            CLI_THRESHOLD="$2"
             shift
             ;;
 
@@ -918,7 +918,7 @@ parse_arguments() {
         # All remaining input is URLs
         *)
             if [[ "$1" == -* ]]; then
-                printf "Error: Unknown option: %s\n" "$1"
+                printf "Error: Unknown option: %s\n" "$1" >&2
                 exit 1
             fi
             URLS+=("$1")
