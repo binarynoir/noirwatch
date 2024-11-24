@@ -1,89 +1,155 @@
 #!/usr/bin/env bash
-# Test Script for NoirWatch
-# Description: Tests all functionalities of the NoirWatch script, including logging.
 
-# Path to the NoirWatch script
-NOIRWATCHSCRIPT="../noirwatch"
+# Test script for NoirWatch
 
-# Test URLs
-TEST_URL1="http://example.com"
-TEST_URL2="https://httpbin.org/get"
-TEST_URL3="[10]https://jsonplaceholder.typicode.com/posts/1"
+# Configuration files
+CONFIG_FILE="test_noirwatch.conf"
+AUTOMATED_CONFIG_FILE="test_noirwatch-autogen.conf"
+URL_FILE="test_urls.conf"
+LOG_FILE="noirwatch_test.log"
+CACHE_DIR="noirwatch_test_cache"
+NOIRWATCH_SCRIPT="../noirwatch"  # Path to the NoirWatch script
 
-# Configuration file for testing
-TEST_CONFIG_FILE="./test_noirwatch.conf"
-
-# URL file for testing
-TEST_URL_FILE="./test_urls.conf"
-
-# Function to run a test
-run_test() {
-    local description=$1
-    local command=$2
-    echo "Running test: $description"
-    eval $command
-    echo "Test completed: $description"
-    echo "----------------------------------------"
+# Function to clean up the automated config file and other test artifacts
+cleanup() {
+    echo "Cleaning up..."
+    rm -f "$AUTOMATED_CONFIG_FILE" "$LOG_FILE"
+    rm -rf "$CACHE_DIR"
+    echo "Cleanup complete."
 }
 
-# Initialize configuration
-run_test "Initialize configuration" "$NOIRWATCHSCRIPT --init"
+# Trap to ensure cleanup happens on script exit
+trap cleanup EXIT
 
-# Show help
-run_test "Show help" "$NOIRWATCHSCRIPT --help"
+# Check if the NoirWatch script exists
+if [[ ! -f "$NOIRWATCH_SCRIPT" ]]; then
+    echo "Error: NoirWatch script $NOIRWATCH_SCRIPT does not exist."
+    exit 1
+fi
 
-# Show version
-run_test "Show version" "$NOIRWATCHSCRIPT --version"
+# Check if the provided config file exists
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "Error: Configuration file $CONFIG_FILE does not exist."
+    exit 1
+fi
 
-# Show configuration
-run_test "Show configuration" "$NOIRWATCHSCRIPT --show-config"
+# Function to initialize the automated config file
+initialize_automated_config() {
+    echo "Initializing automated configuration file..."
+    $NOIRWATCH_SCRIPT --init --config "$AUTOMATED_CONFIG_FILE" --force-init
 
-# Show configuration file
-run_test "Show configuration file" "$NOIRWATCHSCRIPT --show-config-file"
+    # Validate that the automated config file was created
+    if [[ ! -f "$AUTOMATED_CONFIG_FILE" ]]; then
+        echo "Error: Failed to create automated configuration file $AUTOMATED_CONFIG_FILE."
+        exit 1
+    fi
+}
 
-# List URLs
-run_test "List URLs" "$NOIRWATCHSCRIPT --list-urls"
+# Function to test log levels
+test_log_levels() {
+    local config_file=$1
+    local levels=("ERROR" "WARN" "INFO" "DEBUG")
+    for level in "${levels[@]}"; do
+        echo "Testing log level: $level"
+        $NOIRWATCH_SCRIPT --config "$config_file" --log-level "$level" --output "$LOG_FILE"
+        if ! grep -q "\[$level\]" "$LOG_FILE"; then
+            echo "Error: Log level $level not found in log file."
+            exit 1
+        fi
+    done
+}
 
-# Clean cache
-run_test "Clean cache" "$NOIRWATCHSCRIPT --clean"
+# Function to test logging to screen and file
+test_logging() {
+    local config_file=$1
+    echo "Testing logging to screen and file..."
+    $NOIRWATCH_SCRIPT --config "$config_file" --log-level DEBUG --output "$LOG_FILE" --verbose
+    if ! grep -q "DEBUG" "$LOG_FILE"; then
+        echo "Error: DEBUG log not found in log file."
+        exit 1
+    fi
+    $NOIRWATCH_SCRIPT --config "$config_file" --log-level INFO --log
+}
 
-# Run in background
-run_test "Run in background" "$NOIRWATCHSCRIPT --background"
+# Function to test all CLI options
+test_cli_options() {
+    local config_file=$1
+    echo "Testing CLI options..."
+    $NOIRWATCH_SCRIPT --config "$config_file" --init --force-init
+    $NOIRWATCH_SCRIPT --config "$config_file" --show-config
+    $NOIRWATCH_SCRIPT --config "$config_file" --show-config-file
+    $NOIRWATCH_SCRIPT --config "$config_file" --clean
+    $NOIRWATCH_SCRIPT --config "$config_file" --cache-dir "$CACHE_DIR"
+    $NOIRWATCH_SCRIPT --config "$config_file" --pushover --api-token "dummy_token" --user-key "dummy_key"
+    $NOIRWATCH_SCRIPT --config "$config_file" --desktop
+    $NOIRWATCH_SCRIPT --config "$config_file" --verbose
+    $NOIRWATCH_SCRIPT --config "$config_file" --log
+    $NOIRWATCH_SCRIPT --config "$config_file" --output "$LOG_FILE"
+    $NOIRWATCH_SCRIPT --config "$config_file" --log-level DEBUG
+    $NOIRWATCH_SCRIPT --config "$config_file" --url-file "$URL_FILE"
+    $NOIRWATCH_SCRIPT --config "$config_file" --list-urls
+    $NOIRWATCH_SCRIPT --config "$config_file" --interval 10
+    $NOIRWATCH_SCRIPT --config "$config_file" --threshold 5
+    $NOIRWATCH_SCRIPT --config "$config_file" --timeout 10
+    $NOIRWATCH_SCRIPT --config "$config_file" --start
+    sleep 5
+    $NOIRWATCH_SCRIPT --config "$config_file" --status
+    $NOIRWATCH_SCRIPT --config "$config_file" --stop
+}
 
-# Send Pushover notification (requires valid API token and user key)
-# run_test "Send Pushover notification" "$NOIRWATCHSCRIPT --pushover --api-token YOUR_API_TOKEN --user-key YOUR_USER_KEY"
+# Main script execution
+if [[ "$1" == "provided" ]]; then
+    CONFIG_FILE_TO_USE="$CONFIG_FILE"
+elif [[ "$1" == "autogen" ]]; then
+    CONFIG_FILE_TO_USE="$AUTOMATED_CONFIG_FILE"
+    initialize_automated_config
+else
+    echo "Usage: $0 {provided|autogen}"
+    exit 1
+fi
 
-# Send desktop notification (only on macOS)
-# run_test "Send desktop notification" "$NOIRWATCHSCRIPT --desktop"
+# Run the NoirWatch script with the selected config file
+echo "Running NoirWatch with $CONFIG_FILE_TO_USE..."
+$NOIRWATCH_SCRIPT --config "$CONFIG_FILE_TO_USE" --url-file "$URL_FILE" --log-level DEBUG --output "$LOG_FILE"
 
-# Log to screen
-run_test "Log to screen" "$NOIRWATCHSCRIPT --log"
+# Check log file for errors
+echo "Checking log file for errors..."
+if grep -q "ERROR" "$LOG_FILE"; then
+    echo "Error: Errors found in log file."
+    exit 1
+fi
 
-# Set log level
-run_test "Set log level to DEBUG" "$NOIRWATCHSCRIPT --log-level DEBUG"
+# Test log level functions
+echo "Testing log level functions..."
+test_log_levels "$CONFIG_FILE_TO_USE"
 
-# Kill all instances
-run_test "Kill all instances" "$NOIRWATCHSCRIPT --killall"
+# Test logging to screen and file
+test_logging "$CONFIG_FILE_TO_USE"
 
-# List PIDs
-run_test "List PIDs" "$NOIRWATCHSCRIPT --list-pids"
+# Test all CLI options
+test_cli_options "$CONFIG_FILE_TO_USE"
 
-# Kill specific PID (replace 12345 with an actual PID)
-# run_test "Kill specific PID" "$NOIRWATCHSCRIPT --kill 12345"
+# Test cache management functions
+echo "Testing cache management functions..."
+$NOIRWATCH_SCRIPT --config "$CONFIG_FILE_TO_USE" --clean
+if [[ -d "$CACHE_DIR" ]]; then
+    echo "Error: Cache directory was not deleted."
+    exit 1
+fi
 
-# Run the main functionality
-run_test "Run main functionality" "$NOIRWATCHSCRIPT $TEST_URL1 $TEST_URL2 $TEST_URL3"
+# Test notification functions (mocked)
+echo "Testing notification functions..."
+$NOIRWATCH_SCRIPT --config "$CONFIG_FILE_TO_USE" --desktop
+$NOIRWATCH_SCRIPT --config "$CONFIG_FILE_TO_USE" --pushover --api-token "dummy_token" --user-key "dummy_key"
 
-# Test logging functions
-run_test "Log FATAL message" "$NOIRWATCHSCRIPT --log-level FATAL && $NOIRWATCHSCRIPT --log"
-run_test "Log ERROR message" "$NOIRWATCHSCRIPT --log-level ERROR && $NOIRWATCHSCRIPT --log"
-run_test "Log WARN message" "$NOIRWATCHSCRIPT --log-level WARN && $NOIRWATCHSCRIPT --log"
-run_test "Log INFO message" "$NOIRWATCHSCRIPT --log-level INFO && $NOIRWATCHSCRIPT --log"
-run_test "Log DEBUG message" "$NOIRWATCHSCRIPT --log-level DEBUG && $NOIRWATCHSCRIPT --log"
+# Test process management functions
+echo "Testing process management functions..."
+$NOIRWATCH_SCRIPT --config "$CONFIG_FILE_TO_USE" --start
+sleep 5
+$NOIRWATCH_SCRIPT --config "$CONFIG_FILE_TO_USE" --status
+$NOIRWATCH_SCRIPT --config "$CONFIG_FILE_TO_USE" --stop
 
-# Clean up test files
-rm -f $TEST_URL_FILE $TEST_CONFIG_FILE
-rm -rf ./test_cache
-rm -f ./test_noirwatch.log
+# Additional validation steps can be added here
+# For example, checking specific log entries, output files, etc.
 
-echo "All tests completed."
+echo "All tests completed successfully."
