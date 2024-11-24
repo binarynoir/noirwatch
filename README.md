@@ -11,8 +11,19 @@ NoirWatch monitors specified websites for changes and sends notifications. It su
 - Send notifications via Pushover and native desktop notifications (macOS, Linux, Windows)
 - Configurable check intervals
 - Verbose logging with different log levels
-- Background execution support
+- Run as a background service
 - Customizable configuration and URL list files
+
+## Feature Roadmap
+
+- [x] Monitor multiple websites for changes
+- [x] Send notifications via Pushover
+- [x] Send notifications via native desktop notifications (macOS, Linux, Windows)
+- [x] Run as a background service
+- [ ] Run the check a specific number of times and then exit
+- [ ] Output change averages for all urls
+- [ ] Add averages to notifications
+- [ ] Full historical average change report
 
 ## Requirements
 
@@ -361,7 +372,7 @@ To run the tests for the `NoirWatch` script, follow these steps:
    ```bash
    # NoirWatch Configuration File
    CONFIG_FILE="./test_noirwatch.conf"
-   URL_FILE="./test_urls.txt"
+   URL_FILE="./test_urls.conf"
    CACHE_DIR="./test_cache"
    LOG_FILE="./test_noirwatch.log"
    CHECK_INTERVAL=1
@@ -373,7 +384,7 @@ To run the tests for the `NoirWatch` script, follow these steps:
    LOG_LEVEL="DEBUG"
    ```
 
-3. **Update the Test URL File:** Open the test_urls.txt file in your preferred text editor and ensure it contains the following URLs:
+3. **Update the Test URL File:** Open the test_urls.conf file in your preferred text editor and ensure it contains the following URLs:
 
    ```bash
    http://example.com
@@ -389,7 +400,7 @@ To run the tests for the `NoirWatch` script, follow these steps:
 5. **Clean Up Test Files (optional):**
 
    ```bash
-   rm -f ./test_noirwatch.conf ./test_urls.txt
+   rm -f ./test_noirwatch.conf ./test_urls.conf
    rm -rf ./test_cache
    rm -f ./test_noirwatch.log
    ```
