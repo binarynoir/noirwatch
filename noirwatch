@@ -9,8 +9,8 @@
 APP_NAME="NoirWatch"
 VERSION=1.1.0
 LAST_UPDATED="2024-11-26"
+
 # TODO:
-#  - Change: url default path to use normalization functions
 #  - Add more notification methods (email, slack, discord, etc.)
 
 # ==============================
@@ -80,8 +80,8 @@ NC='\033[0m' # No Color
 # Application Specific Variables
 # ==============================
 
-# Default URL list file location
-DEFAULT_URL_FILE="$HOME/.config/noirwatch_urls.conf"
+# Default URL list file location (full default path added during initialization)
+URL_FILE="noirwatch_urls.conf"
 
 # Initialize URLS as an empty array
 URLS=()
@@ -810,7 +810,7 @@ show_help() {
 
     # URL Management
     printf "\nURL Management:\n"
-    printf "  -f, --url-file <file>     Specify a file containing a list of URLs to monitor. (default: %s)\n" "$DEFAULT_URL_FILE"
+    printf "  -f, --url-file <file>     Specify a file containing a list of URLs to monitor. (default: %s)\n" "$URL_FILE"
     printf "  -U, --list-urls           List all watched URLs.\n"
     printf "  -C, --clean               Delete all cached files.\n"
 
@@ -1061,6 +1061,7 @@ process_arguments() {
     CACHE_DIR="$(get_temp_path "$CACHE_DIR")"
     LOG_FILE="$CACHE_DIR/$LOG_FILE"
     PID_FILE="$CACHE_DIR/$PID_FILE"
+    URL_FILE="$(get_config_path "$URL_FILE")"
 
     # Set default hostname
     SYSTEM_NAME="$(get_hostname)"
@@ -1103,7 +1104,7 @@ process_arguments() {
     process_urls
 
     # Check if the array is empty
-    if [ ${#URLS[@]} -eq 0 ]; then
+    if [ ! $SHOW_STATUS && ! $SHOW_STOP && ${#URLS[@]} -eq 0 ]; then
         log_message "ERROR" "Error: No URLS have been provided."
         exit 1
     fi
@@ -1132,8 +1133,6 @@ process_urls() {
     if [ ${#URLS[@]} -eq 0 ]; then
         if [ -n "$URL_FILE" ]; then
             process_url_file "$URL_FILE"
-        elif [ -f "$DEFAULT_URL_FILE" ]; then
-            process_url_file "$DEFAULT_URL_FILE"
         elif [[ "$SHOW_CONFIG" = false && "$SHOW_CONFIG_FILE" = false ]]; then
             log_message "INFO" "Usage: $(basename "$0") <website_url>... [options]" "$LINENO"
             log_message "INFO" "Try '$(basename "$0") --help' for more information." "$LINENO"
@@ -1266,6 +1265,7 @@ check_website() {
     local normalized_file="$CACHE_DIR/normalized_content_$encoded_url.txt"
     local hash_file="$CACHE_DIR/hash_$encoded_url.txt"
 
+    log_message "DEBUG" "" "$LINENO"
     log_message "DEBUG" "$SYSTEM_NAME Checking URL: $clean_url" "$LINENO"
     log_message "DEBUG" "- Submitted URL: $website_url" "$LINENO"
     log_message "DEBUG" "- Global threshold: $THRESHOLD%" "$LINENO"

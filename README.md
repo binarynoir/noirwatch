@@ -282,7 +282,7 @@ Run the script with the desired options. Below are some examples:
 
 ## Configuration
 
-NoirWatch uses a configuration file to store default settings. The default location is `$HOME/.config/noirwatch.conf`. You can initialize a configuration file with default settings using:
+NoirWatch uses a configuration file to store default settings. The default location is `~/.config/noirwatch.conf`. You can initialize a configuration file with default settings using:
 
 ```bash
 ./noirwatch --init
@@ -294,8 +294,8 @@ NoirWatch uses a configuration file to store default settings. The default locat
 # NoirWatch Configuration File
 CACHE_DIR="/tmp/noirwatch_cache"
 LOG_FILE="/tmp/noirwatch_cache/noirwatch.log"
-CONFIG_FILE="$HOME/.config/noirwatch.conf"
-URL_FILE="$HOME/.config/noirwatch_urls.conf"
+CONFIG_FILE="~/.config/noirwatch.conf"
+URL_FILE="~/.config/noirwatch_urls.conf"
 CHECK_INTERVAL=15
 TIMEOUT=5
 PUSHOVER_NOTIFICATION=false

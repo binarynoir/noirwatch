@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Cross platform paths are normalization
+- URL default location is empty
+- Failing on --status and --stop
 
 ## [1.0.2] - 2024-11-23
 
