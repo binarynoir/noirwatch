@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - none
 
+## [1.1.0] - 2024-11-26
+
+### Added
+
+- System name displayed in notifications using local host name
+- System name configurable using `--system-name` `-n`
+
+### Changed
+
+- Cross platform CACHE_DIR path generation using system temporary path
+- Cross platform CONFIG_FILE path generation using system configuration path
+- Order of Pushover user key and api token
+- Additional code reorganization
+
+### Fixed
+
+- Cross platform paths are normalization
+
 ## [1.0.2] - 2024-11-23
 
 ### Added

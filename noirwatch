@@ -1,48 +1,74 @@
 #!/usr/bin/env bash
 
-# Script Name: NoirWatch
+# App Name: NoirWatch
 # Description: Monitor specified websites for changes and send notifications.
 # Author: John Smith III
 # License: MIT License
 
 # App version and name
 APP_NAME="NoirWatch"
-VERSION=1.0.2
-LAST_UPDATED="2024-11-23"
+VERSION=1.1.0
+LAST_UPDATED="2024-11-26"
+# TODO:
+#  - Change: url default path to use normalization functions
+#  - Add more notification methods (email, slack, discord, etc.)
+
+# ==============================
+# Application Specific Variables
+# ==============================
+
+# Application specific dependencies
+DEPENDENCIES=("xmllint")
 
 # ==============================
 # Base Application Variables
 # ==============================
 
-# Default configuration file location
-CONFIG_FILE="$HOME/.config/noirwatch.conf"
+# Default configuration file location (full default path added during initialization)
+CONFIG_FILE="$(basename "$0").conf"
 CLI_CONFIG_FILE=false
 
-# Master directory to store all cache files
-CACHE_DIR="/tmp/noirwatch_cache"
+# Master directory to store all cache files (full default path added during initialization)
+CACHE_DIR="$(basename "$0")_cache"
 
-# Default log file location
-LOG_FILE="$CACHE_DIR/noirwatch.log"
+# Default log file location (full default path added during initialization)
+LOG_FILE="$(basename "$0").log"
 INIT_FORCE=false
 
-# Lock file
-PID_FILE="$CACHE_DIR/noirwatch.pid"
+# Lock file (full default path added during initialization)
+PID_FILE="$(basename "$0").pid"
 
 # Service mode flag
 IS_SERVICE=false
 
+# Default check interval (in seconds)
+CHECK_INTERVAL=60
+
+# Default timeout interval (in seconds)
+TIMEOUT=5
+
 # Pushover notification options
 PUSHOVER_NOTIFICATION=false
-PUSHOVER_API_TOKEN=
 PUSHOVER_USER_KEY=
+PUSHOVER_API_TOKEN=
 
 # Native desktop notification options
 DESKTOP_NOTIFICATION=true
 
 # Log levels
-LOG_LEVELS=("FATAL" "ERROR" "WARN" "INFO" "DEBUG")
+# Define log levels directly as an associative array
+declare -A LOG_LEVELS_MAP=(
+    ["FATAL"]=0
+    ["ERROR"]=1
+    ["WARN"]=2
+    ["INFO"]=3
+    ["DEBUG"]=4
+)
 LOG_LEVEL="INFO"
 VERBOSE=false
+
+# System host name
+SYSTEM_NAME=""
 
 # ANSI color codes
 RED='\033[0;31m'
@@ -60,59 +86,140 @@ DEFAULT_URL_FILE="$HOME/.config/noirwatch_urls.conf"
 # Initialize URLS as an empty array
 URLS=()
 
-# Default check interval (in minutes)
-CHECK_INTERVAL=15
-
 # Default threshold percentage (higher is less sensitive)
 THRESHOLD=0
-
-# Default timeout interval (in seconds)
-TIMEOUT=5
 
 # ==============================
 # Utility Functions
 # ==============================
 
-# Function: Check for required command-line utilities
-check_dependencies() {
-    local dependencies=("cat" "curl" "nslookup" "ping" "sed" "xmllint")
-    for cmd in "${dependencies[@]}"; do
-        if ! command -v "$cmd" &>/dev/null; then
-            log_message "FATAL" "Error: $cmd is not installed. Please install it and try again." "$LINENO"
-            exit 1
-        fi
-    done
-}
-
 # Function: Show version information
 show_version() {
     printf "%s version: %s\n" "$APP_NAME" "$VERSION"
     printf "Last updated: %s\n" "$LAST_UPDATED"
-    exit 0
+}
+
+# Function: Check for required command-line utilities
+check_dependencies() {
+    DEPENDENCIES+=("cat" "curl" "sed")
+
+    for cmd in "${DEPENDENCIES[@]}"; do
+        # Debug log for each dependency being checked
+        log_message "DEBUG" "Checking if dependency '$cmd' is installed..." "$LINENO"
+
+        if ! command -v "$cmd" &>/dev/null; then
+            log_message "FATAL" "Error: $cmd is not installed. Please install it and try again." "$LINENO"
+            exit 1
+        else
+            log_message "DEBUG" "Success: $cmd is installed!" "$LINENO"
+        fi
+    done
+
+    # Optional success debug log
+    log_message "DEBUG" "All dependencies are installed." "$LINENO"
+}
+
+# Function: Get system host name
+get_hostname() {
+    case "$OSTYPE" in
+    linux* | darwin*)
+        hostname
+        ;;
+    cygwin* | msys* | win32*)
+        powershell -NoProfile -Command "[System.Net.Dns]::GetHostName()"
+        ;;
+    *)
+        log_message "FATAL" "Unsupported OS: $OSTYPE" "$LINENO"
+        exit 1
+        ;;
+    esac
+}
+
+# Function: Normalize paths
+normalize_path() {
+    local path="$1"
+    local normalized_path
+
+    case "$OSTYPE" in
+    linux* | darwin*)
+        if command -v realpath >/dev/null 2>&1; then
+            # Use `realpath -m` if available for non-existent paths
+            normalized_path=$(realpath -m "$path" 2>/dev/null || echo "$(cd "$(dirname "$path")" && pwd)/$(basename "$path")")
+        else
+            # Fallback for systems without `realpath`
+            normalized_path=$(cd "$(dirname "$path")" && pwd)/$(basename "$path")
+        fi
+        ;;
+    cygwin* | msys* | win32*)
+        # Use PowerShell to resolve the path on Windows
+        normalized_path=$(powershell -NoProfile -Command "try { (Resolve-Path -LiteralPath '$path').Path } catch { [System.IO.Path]::GetFullPath('$path') }")
+        ;;
+    *)
+        echo "Unsupported OS: $OSTYPE" >&2
+        exit 1
+        ;;
+    esac
+
+    echo "$normalized_path"
+}
+
+# Function: Get the root configuration directory and set the config file path
+get_config_path() {
+    local append_path="$1"
+    local config_dir
+
+    case "$OSTYPE" in
+    linux* | darwin*)
+        config_dir="$HOME/.config"
+        ;;
+    cygwin* | msys* | win32*)
+        config_dir="$APPDATA\\"
+        ;;
+    *)
+        log_message "FATAL" "Unsupported OS: $OSTYPE" "$LINENO"
+        exit 1
+        ;;
+    esac
+
+    local full_path="$config_dir/$append_path"
+    echo "$(normalize_path "$full_path")"
+}
+
+# Function: Get the temporary directory path
+get_temp_path() {
+    local append_path="$1"
+    local temp_dir
+
+    case "$OSTYPE" in
+    linux* | darwin*)
+        temp_dir="/tmp"
+        ;;
+    cygwin* | msys* | win32*)
+        temp_dir="$TEMP"
+        ;;
+    *)
+        log_message "FATAL" "Unsupported OS: $OSTYPE" "$LINENO"
+        exit 1
+        ;;
+    esac
+
+    local full_path="$temp_dir/$append_path"
+    echo "$(normalize_path "$full_path")"
 }
 
 # ==============================
 # Logging and Messaging Functions
 # ==============================
 
-# Function: Get log level index
-get_log_level_index() {
-    local level_name=$1
-    for i in "${!LOG_LEVELS[@]}"; do
-        if [[ "${LOG_LEVELS[$i]}" == "$level_name" ]]; then
-            echo "$i"
-            return
-        fi
-    done
-    echo "-1"
-}
-
 # Function: Check if the current log level is at or above a given level
 log_at_or_above() {
     local level_name=$1
-    local current_level_index=$(get_log_level_index "$LOG_LEVEL")
-    local check_level_index=$(get_log_level_index "$level_name")
 
+    # Get indices from the associative array
+    local current_level_index=${LOG_LEVELS_MAP[$LOG_LEVEL]}
+    local check_level_index=${LOG_LEVELS_MAP[$level_name]}
+
+    # Compare indices
     if [[ $current_level_index -ge $check_level_index ]]; then
         return 0 # true: log level is at or above the given level
     else
@@ -135,16 +242,16 @@ log_to_console() {
 
     case $log_level_name in
     "FATAL")
-        printf "${RED_BG}%s${NC}\n" "$output_message" >&2
+        printf "${RED_BG}%b${NC}\n" "$output_message" >&2
         ;;
     "ERROR")
-        printf "${RED}%s${NC}\n" "$output_message" >&2
+        printf "${RED}%b${NC}\n" "$output_message" >&2
         ;;
     "WARN")
-        printf "${YELLOW}%s${NC}\n" "$output_message" >&2
+        printf "${YELLOW}%b${NC}\n" "$output_message" >&2
         ;;
     *)
-        printf "%s${NC}\n" "$output_message" >&2
+        printf "%b${NC}\n" "$output_message" >&2
         ;;
     esac
 }
@@ -157,19 +264,19 @@ log_message() {
     local timestamp=$(date -u "+%Y-%m-%dT%H:%M:%SZ")
 
     # Validate log level name
-    local log_level=$(get_log_level_index "$log_level_name")
-    if [[ "$log_level" -eq -1 ]]; then
+    local log_level_index=${LOG_LEVELS_MAP[$log_level_name]}
+    if [[ -z "$log_level_index" ]]; then
         log_level_name="INFO"
-        log_level=$(get_log_level_index "$log_level_name")
+        log_level_index=${LOG_LEVELS_MAP[$log_level_name]}
         printf "%s\n" "$timestamp [ERROR] Invalid log level specified. Defaulting to INFO." >&2
     fi
 
     # Validate current log level
-    local current_log_level=$(get_log_level_index "$LOG_LEVEL")
-    if [[ "$current_log_level" -eq -1 ]]; then
+    local current_log_level_index=${LOG_LEVELS_MAP[$LOG_LEVEL]}
+    if [[ -z "$current_log_level_index" ]]; then
         printf "%s\n" "$timestamp [ERROR] Invalid global log level. Defaulting to INFO." >&2
         LOG_LEVEL="INFO"
-        current_log_level=$(get_log_level_index "$LOG_LEVEL")
+        current_log_level_index=${LOG_LEVELS_MAP[$LOG_LEVEL]}
     fi
 
     # Format the log message
@@ -361,9 +468,9 @@ send_pushover_notification() {
     local response
 
     if [ "$PUSHOVER_NOTIFICATION" = true ]; then
-        log_message "DEBUG" " Processing Pushover notification: $website_url" "$LINENO"
-        log_message "DEBUG" " Url: $website_url" "$LINENO"
-        log_message "DEBUG" " Message: $message" "$LINENO"
+        log_message "DEBUG" "- Processing Pushover notification: $website_url" "$LINENO"
+        log_message "DEBUG" "- Url: $website_url" "$LINENO"
+        log_message "DEBUG" "- Message: $message" "$LINENO"
 
         # Check if PUSHOVER_API_TOKEN is set
         if [[ -z "$PUSHOVER_API_TOKEN" ]]; then
@@ -408,7 +515,7 @@ send_pushover_notification() {
             return 1
         fi
 
-        log_message "DEBUG" " Pushover notification sent successfully." "$LINENO"
+        log_message "DEBUG" "- Pushover notification sent successfully." "$LINENO"
         return 0
     fi
 }
@@ -417,16 +524,16 @@ send_pushover_notification() {
 # Process Execution Functions
 # ==============================
 
-# Function: Start the network monitoring service
+# Function: Start the service
 start_service() {
     # Set up the trap for cleanup on app exit
     trap 'cleanup_pid' EXIT
 
-    log_message "INFO" "Starting network monitoring service..." "$LINENO"
+    log_message "INFO" "Starting $APP_NAME service..." "$LINENO"
 
     # Launch the service as a background process in a subshell
     (
-        start_monitor >/dev/null 2>&1 &
+        main >/dev/null 2>&1 &
         local service_pid=$!
 
         # Sleep briefly to ensure the background process has initialized
@@ -437,51 +544,51 @@ start_service() {
             IS_SERVICE=true
             # Write the PID to the file
             echo "$service_pid" >"$PID_FILE"
-            log_message "DEBUG" "Service started with PID $service_pid." "$LINENO"
+            log_message "DEBUG" "$APP_NAME service started with PID $service_pid." "$LINENO"
         else
             # If the process failed to start, clean up and exit
-            log_message "FATAL" "Failed to start service. PID is not valid." "$LINENO"
+            log_message "FATAL" "Failed to start $APP_NAME service. PID is not valid." "$LINENO"
             cleanup_pid
             exit 1
         fi
     ) &
 
     # The service is now running in the background
-    log_message "INFO" "Network monitoring service is running in the background."
+    log_message "INFO" "$APP_NAME service is running in the background." "$LINENO"
 }
 
-# Function: Stop the network monitoring service
+# Function: Stop the service
 stop_service() {
     if [[ ! -f "$PID_FILE" ]]; then
-        log_message "INFO" "No service is currently running." "$LINENO"
+        log_message "INFO" "No $APP_NAME service is currently running." "$LINENO"
         exit 0
     fi
 
     local pid
     pid=$(cat "$PID_FILE")
     if kill -0 "$pid" >/dev/null 2>&1; then
-        log_message "INFO" "Stopping service with PID $pid..." "$LINENO"
+        log_message "INFO" "Stopping $APP_NAME service with PID $pid..." "$LINENO"
         kill "$pid"
-        log_message "INFO" "Service stopped." "$LINENO"
+        log_message "INFO" "$APP_NAME service stopped." "$LINENO"
     else
-        log_message "WARN" "No active process found for PID $pid. Cleaning up stale PID file." "$LINENO"
+        log_message "WARN" "No active $APP_NAME process found for PID $pid. Cleaning up stale PID file." "$LINENO"
         cleanup_pid
     fi
 }
 
-# Function: Check the status of the network monitoring service
+# Function: Check the status of the service
 status_service() {
     if [[ -f "$PID_FILE" ]]; then
         local pid
         pid=$(cat "$PID_FILE")
         if kill -0 "$pid" >/dev/null 2>&1; then
-            log_message "INFO" "Service is running with PID $pid." "$LINENO"
+            log_message "INFO" "$APP_NAME service is running with PID $pid." "$LINENO"
         else
-            log_message "WARN" "Service is not running, but PID file exists. Cleaning up stale PID file." "$LINENO"
+            log_message "WARN" "$APP_NAME service is not running, but PID file exists. Cleaning up stale PID file." "$LINENO"
             cleanup_pid
         fi
     else
-        log_message "INFO" "Service is not running." "$LINENO"
+        log_message "INFO" "$APP_NAME service is not running." "$LINENO"
     fi
 }
 
@@ -494,7 +601,7 @@ check_already_running() {
             log_message "ERROR" "Another instance of the $APP_NAME is already running (PID: $pid)." "$LINENO"
             exit 1
         else
-            log_message "WARN" "Stale PID file found. Cleaning up." "$LINENO"
+            log_message "WARN" "Stale $APP_NAME PID file found. Cleaning up." "$LINENO"
             rm -f "$PID_FILE"
         fi
     fi
@@ -504,7 +611,7 @@ check_already_running() {
 cleanup_pid() {
     # Ensure the PID file exists before attempting to clean it up
     if [[ -f "$PID_FILE" ]]; then
-        log_message "DEBUG" "Cleaning up PID file and exiting." "$LINENO"
+        log_message "DEBUG" "Cleaning up $APP_NAME PID file and exiting." "$LINENO"
         rm -f "$PID_FILE"
     fi
 }
@@ -526,8 +633,9 @@ start_process() {
     check_already_running
 
     # Log and start the configuration
-    log_message "INFO" "Starting: $(date)" "$LINENO"
+    log_message "INFO" "Starting $APP_NAME: $(date)" "$LINENO"
     show_config
+    show_urls
 
     # Start the service or run interactively
     if [[ "$START_SERVICE" == true ]]; then
@@ -537,7 +645,7 @@ start_process() {
         # Set up a trap for cleanup on termination
         trap 'cleanup_pid' EXIT
         echo $$ >"$PID_FILE"
-        start_monitor
+        main
     fi
 }
 
@@ -605,26 +713,32 @@ init_config() {
 CACHE_DIR="$CACHE_DIR"
 LOG_FILE="$LOG_FILE"
 CONFIG_FILE="$CONFIG_FILE"
-URL_FILE="$URL_FILE"
 
 # Monitoring Settings (in minutes)
 CHECK_INTERVAL=$CHECK_INTERVAL
-
-# Threshold Percentage Setting
-THRESHOLD=$THRESHOLD
 
 # Timeout interval (in seconds)
 TIMEOUT=$TIMEOUT
 
 # Notification Settings
+SYSTEM_NAME="$SYSTEM_NAME"
 PUSHOVER_NOTIFICATION=$PUSHOVER_NOTIFICATION
-PUSHOVER_API_TOKEN="$PUSHOVER_API_TOKEN"
 PUSHOVER_USER_KEY="$PUSHOVER_USER_KEY"
+PUSHOVER_API_TOKEN="$PUSHOVER_API_TOKEN"
 DESKTOP_NOTIFICATION=$DESKTOP_NOTIFICATION
 
 # Logging Settings
 VERBOSE=$VERBOSE
 LOG_LEVEL="$LOG_LEVEL"
+
+# APP SPECIFIC SETTINGS
+
+# URL file
+URL_FILE="$URL_FILE"
+
+# Threshold Percentage Setting
+THRESHOLD=$THRESHOLD
+
 EOF
     )
 
@@ -645,6 +759,7 @@ show_config() {
     [ -n "$LOG_LEVEL" ] && log_message "INFO" "Log Level: $LOG_LEVEL" "$LINENO"
     [ -n "$VERBOSE" ] && log_message "INFO" "Verbose enabled: $VERBOSE" "$LINENO"
     [ -n "$CONFIG_FILE" ] && log_message "INFO" "Configuration file: $CONFIG_FILE" "$LINENO"
+    [ -n "$SYSTEM_NAME" ] && log_message "INFO" "System Name: $SYSTEM_NAME" "$LINENO"
     [ -n "$PUSHOVER_NOTIFICATION" ] && log_message "INFO" "Pushover enabled: $PUSHOVER_NOTIFICATION" "$LINENO"
     [ -n "$DESKTOP_NOTIFICATION" ] && log_message "INFO" "Desktop notification enabled: $DESKTOP_NOTIFICATION" "$LINENO"
     [ -n "$CHECK_INTERVAL" ] && log_message "INFO" "Check interval: $CHECK_INTERVAL min(s)" "$LINENO"
@@ -667,7 +782,7 @@ show_help() {
 
     # Configuration and Initialization
     printf "\nConfiguration and Initialization:\n"
-    printf "  -c, --config <config_file>  Specify a custom configuration file (default: %s).\n" "$CONFIG_FILE"
+    printf "  -c, --config <config_file>  Specify a custom configuration file (default: %s).\n" "${CONFIG_FILE}"
     printf "  -I, --init                  Initialize the configuration file.\n"
     printf "  -F, --force-init            Force initialize of the configuration file if one exists.\n"
     printf "  -s, --show-config           Show the configuration settings.\n"
@@ -676,20 +791,21 @@ show_help() {
     # Cache Management
     printf "\nCache Management:\n"
     printf "  -C, --clean                 Delete all cached files.\n"
-    printf "  -k, --cache-dir  <path>     Specify a custom cache directory.\n"
+    printf "  -k, --cache-dir  <path>     Specify a custom cache directory (default: %s).\n" "$CACHE_DIR}"
 
     # Notification Options
     printf "\nNotification Options:\n"
+    printf "  -n, --system-name           Name of the system running the script (default: %s).\n" "${SYSTEM_NAME}"
     printf "  -p, --pushover              Send Pushover notifications.\n"
-    printf "  -a, --api-token <token>     Specify the API token for Pushover notifications.\n"
     printf "  -u, --user-key <key>        Specify the user key for Pushover notifications.\n"
+    printf "  -a, --api-token <token>     Specify the API token for Pushover notifications.\n"
     printf "  -d, --desktop               Send desktop notifications using AppleScript.\n"
 
     # Logging and Output
     printf "\nLogging and Output:\n"
     printf "  -v, --verbose             Enable verbose output.\n"
     printf "  -l, --log                 Log the log file to the screen.\n"
-    printf "  -o, --output <file>       Specify a custom log file location.\n"
+    printf "  -o, --output <file>       Specify a custom log file location (default: %s).\n" "${LOG_FILE}"
     printf "  -L, --log-level <level>   Set the log level (FATAL, ERROR, WARN, INFO, DEBUG).\n"
 
     # URL Management
@@ -701,7 +817,7 @@ show_help() {
     # Network Check Configuration
     printf "\nNetwork Check Configuration:\n"
     printf "  -i, --interval <minutes>    Set the interval between checks (default is %d minutes).\n" "$CHECK_INTERVAL"
-    printf "  -T, --timeout <seconds>     Set the timeout for ping and DNS tests (default: %d seconds).\n" "${DNS_TEST_TIMEOUT:-5}"
+    printf "  -T, --timeout <seconds>     Set the connection timeout for remote connections (default: %d seconds).\n" "${DNS_TEST_TIMEOUT:-5}"
     printf "  -t, --threshold <percentage> Set the threshold percentage for detecting changes. Higher values mean fewer notifications for minor changes. (default: %d%%)\n" "$THRESHOLD"
 
     # Process Management Functions
@@ -749,16 +865,17 @@ parse_arguments() {
         case "$1" in
         # General Options
         --help | -h)
-            show_help
+            SHOW_HELP=true
             ;;
         --version | -V)
             show_version
+            exit 0
             ;;
 
         # Configuration and Initialization
         --config | -c)
             if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --config requires a value\n" >&2
+                printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             elif [[ ! -f "$2" ]]; then
                 printf "Error: Config file not found: %s\n" "$2" >&2
@@ -796,6 +913,14 @@ parse_arguments() {
         --list-urls | -U)
             SHOW_URL=true
             ;;
+        --threshold | -t)
+            if [[ -z "$2" || "$2" == -* ]]; then
+                printf "Error: --threshold requires a value\n"
+                exit 1
+            fi
+            CLI_THRESHOLD="$2"
+            shift
+            ;;
 
         # Cache Management
         --clean | -C)
@@ -803,31 +928,39 @@ parse_arguments() {
             ;;
         --cache-dir | -k)
             if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --cache-dir requires a value\n" >&2
+                printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             fi
             CLI_CACHE_DIR="$2"
             shift
             ;;
 
-        # Execution Options
+        # Notification Options
+        --system-name | -n)
+            if [[ -z "$2" || "$2" == -* ]]; then
+                printf "Error: %s requires a value\n" "$1" >&2
+                exit 1
+            fi
+            CLI_SYSTEM_NAME="$2"
+            shift
+            ;;
         --pushover | -p)
             CLI_PUSHOVER_NOTIFICATION=true
             ;;
-        --api-token | -a)
-            if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --api-token requires a value\n" >&2
-                exit 1
-            fi
-            CLI_PUSHOVER_API_TOKEN="$2"
-            shift
-            ;;
         --user-key | -u)
             if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --user-key requires a value\n" >&2
+                printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             fi
             CLI_PUSHOVER_USER_KEY="$2"
+            shift
+            ;;
+        --api-token | -a)
+            if [[ -z "$2" || "$2" == -* ]]; then
+                printf "Error: %s requires a value\n" "$1" >&2
+                exit 1
+            fi
+            CLI_PUSHOVER_API_TOKEN="$2"
             shift
             ;;
         --desktop | -d)
@@ -843,7 +976,7 @@ parse_arguments() {
             ;;
         --output | -o)
             if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --output requires a value\n" >&2
+                printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             fi
             CLI_LOG_FILE="$2"
@@ -851,15 +984,15 @@ parse_arguments() {
             ;;
         --log-level | -L)
             if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --log-level requires a value\n" >&2
+                printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             fi
-            # Check if the log level exists in the LOG_LEVELS array
-            if get_log_level_index "$2" &>/dev/null && [[ "$(get_log_level_index "$2")" -ne -1 ]]; then
+            # Check if the log level exists in the LOG_LEVELS_MAP array
+            if [[ -n "${LOG_LEVELS_MAP[$2]}" ]]; then
                 CLI_LOG_LEVEL="$2"
                 shift
             else
-                printf "Error: --log-level requires a valid value. Available levels are: %s\n" "${LOG_LEVELS[*]}" >&2
+                printf "Error: %s requires a valid value. Available levels are: %s\n" "$1" "${!LOG_LEVELS_MAP[*]}" >&2
                 exit 1
             fi
             ;;
@@ -867,7 +1000,7 @@ parse_arguments() {
         # Network Check Configuration
         --interval | -i)
             if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --interval requires a value\n" >&2
+                printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             fi
             CLI_CHECK_INTERVAL="$2"
@@ -875,7 +1008,7 @@ parse_arguments() {
             ;;
         --timeout | -T)
             if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --timeout requires a value\n" >&2
+                printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             fi
             if ! [[ "$2" =~ ^[0-9]+$ ]]; then
@@ -883,14 +1016,6 @@ parse_arguments() {
                 exit 1
             fi
             CLI_TIMEOUT="$2"
-            shift
-            ;;
-        --threshold | -t)
-            if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --threshold requires a value\n"
-                exit 1
-            fi
-            CLI_THRESHOLD="$2"
             shift
             ;;
 
@@ -930,6 +1055,20 @@ parse_arguments() {
 
 # Function: Process and execute actions based on parsed arguments
 process_arguments() {
+
+    # Default configuration file location
+    CONFIG_FILE="$(get_config_path "$CONFIG_FILE")"
+    CACHE_DIR="$(get_temp_path "$CACHE_DIR")"
+    LOG_FILE="$CACHE_DIR/$LOG_FILE"
+    PID_FILE="$CACHE_DIR/$PID_FILE"
+
+    # Set default hostname
+    SYSTEM_NAME="$(get_hostname)"
+
+    # Show help and exit
+    [[ "$SHOW_HELP" = true ]] && show_help
+
+    # Override config settings with command line options
     load_config "$CONFIG_FILE"
     [[ -n "$CLI_VERBOSE" ]] && VERBOSE="$CLI_VERBOSE"
     [[ -n "$CLI_CACHE_DIR" ]] && CACHE_DIR="$CLI_CACHE_DIR"
@@ -946,12 +1085,11 @@ process_arguments() {
     [[ -n "$CLI_LOG_LEVEL" ]] && LOG_LEVEL="$CLI_LOG_LEVEL"
     init_log
 
-    # Override config settings with command line options
     [[ "$SHOW_LOG" = true ]] && show_log
-    [[ "$SHOW_HELP" = true ]] && show_help
+    [[ -n "$CLI_SYSTEM_NAME" ]] && SYSTEM_NAME="$CLI_SYSTEM_NAME"
     [[ -n "$CLI_PUSHOVER_NOTIFICATION" ]] && PUSHOVER_NOTIFICATION="$CLI_PUSHOVER_NOTIFICATION"
-    [[ -n "$CLI_PUSHOVER_API_TOKEN" ]] && PUSHOVER_API_TOKEN="$CLI_PUSHOVER_API_TOKEN"
     [[ -n "$CLI_PUSHOVER_USER_KEY" ]] && PUSHOVER_USER_KEY="$CLI_PUSHOVER_USER_KEY"
+    [[ -n "$CLI_PUSHOVER_API_TOKEN" ]] && PUSHOVER_API_TOKEN="$CLI_PUSHOVER_API_TOKEN"
     [[ -n "$CLI_DESKTOP_NOTIFICATION" ]] && DESKTOP_NOTIFICATION="$CLI_DESKTOP_NOTIFICATION"
     [[ -n "$CLI_CHECK_INTERVAL" ]] && CHECK_INTERVAL="$CLI_CHECK_INTERVAL"
     [[ -n "$CLI_TIMEOUT" ]] && TIMEOUT="$CLI_TIMEOUT"
@@ -1009,7 +1147,7 @@ show_urls() {
     log_message "INFO" "" "$LINENO"
     log_message "INFO" "Monitoring the following URLs:" "$LINENO"
     for URL in "${URLS[@]}"; do
-        log_message "INFO" "  - $URL" "$LINENO"
+        log_message "INFO" "- $URL" "$LINENO"
     done
     log_message "INFO" "" "$LINENO"
 }
@@ -1061,7 +1199,7 @@ normalize_content() {
 
     # Replace the original file with the normalized content
     mv "$temp_file" "$file"
-    log_message "DEBUG" " Content normalized successfully: $file" "$LINENO"
+    log_message "DEBUG" "- Content normalized successfully: $file" "$LINENO"
     return 0
 }
 
@@ -1071,13 +1209,13 @@ calculate_change_percentage() {
     local new_file=$2
 
     # Basic logging
-    log_message "DEBUG" " Calculating change percentage" "$LINENO"
-    log_message "DEBUG" " Previous file: $previous_file" "$LINENO"
-    log_message "DEBUG" " New file: $new_file" "$LINENO"
+    log_message "DEBUG" "- Calculating change percentage" "$LINENO"
+    log_message "DEBUG" "- Previous file: $previous_file" "$LINENO"
+    log_message "DEBUG" "- New file: $new_file" "$LINENO"
 
     # Calculate the number of lines in the previous file
     if [ ! -f "$previous_file" ] || [ ! -f "$new_file" ]; then
-        log_message "ERROR" " One of the files for comparison does not exist." "$LINENO"
+        log_message "ERROR- One of the files for comparison does not exist." "$LINENO"
         echo 100 # Consider 100% change
         return 0
     fi
@@ -1085,18 +1223,18 @@ calculate_change_percentage() {
     local previous_lines=$(wc -l <"$previous_file" | xargs)
     local new_lines=$(wc -l <"$new_file" | xargs)
 
-    log_message "DEBUG" " Previous lines: $previous_lines" "$LINENO"
-    log_message "DEBUG" " New lines: $new_lines" "$LINENO"
+    log_message "DEBUG" "- Previous lines: $previous_lines" "$LINENO"
+    log_message "DEBUG" "- New lines: $new_lines" "$LINENO"
 
     if [ "$previous_lines" -eq 0 ] && [ "$new_lines" -eq 0 ]; then
-        log_message "INFO" " Both files are empty. Assuming no change." "$LINENO"
+        log_message "INFO" "- Both files are empty. Assuming no change." "$LINENO"
         echo 0
         return 0
     fi
 
     # Handle empty previous file
     if [ "$previous_lines" -eq 0 ]; then
-        log_message "WARN" " Previous file is empty. Assuming 100% change." "$LINENO"
+        log_message "WARN" "- Previous file is empty. Assuming 100% change." "$LINENO"
         echo 100
         return 0
     fi
@@ -1106,8 +1244,8 @@ calculate_change_percentage() {
 
     # Calculate change percentage
     local change_percentage=$(awk "BEGIN {printf \"%.2f\", ($differing_lines / $previous_lines) * 100}" | xargs)
-    log_message "DEBUG" " Differing lines: $differing_lines" "$LINENO"
-    log_message "DEBUG" " Change percentage: $change_percentage%" "$LINENO"
+    log_message "DEBUG" "- Differing lines: $differing_lines" "$LINENO"
+    log_message "DEBUG" "- Change percentage: $change_percentage%" "$LINENO"
 
     # Debug: Save the diff output for inspection
     diff "$previous_file" "$new_file" >"$CACHE_DIR/diff_debug.txt"
@@ -1128,28 +1266,28 @@ check_website() {
     local normalized_file="$CACHE_DIR/normalized_content_$encoded_url.txt"
     local hash_file="$CACHE_DIR/hash_$encoded_url.txt"
 
-    log_message "DEBUG" "Checking URL: $clean_url" "$LINENO"
-    log_message "DEBUG" " Submitted URL: $website_url" "$LINENO"
-    log_message "DEBUG" " Global threshold: $THRESHOLD%" "$LINENO"
-    log_message "DEBUG" " Override threshold ${prefixed_threshold:-0}%" "$LINENO"
-    log_message "DEBUG" " Applied threshold: $applied_threshold%" "$LINENO"
+    log_message "DEBUG" "$SYSTEM_NAME Checking URL: $clean_url" "$LINENO"
+    log_message "DEBUG" "- Submitted URL: $website_url" "$LINENO"
+    log_message "DEBUG" "- Global threshold: $THRESHOLD%" "$LINENO"
+    log_message "DEBUG" "- Override threshold ${prefixed_threshold:-0}%" "$LINENO"
+    log_message "DEBUG" "- Applied threshold: $applied_threshold%" "$LINENO"
 
     # Fetch the current content of the website
     if ! curl -s -f --max-time "$TIMEOUT" "$clean_url" >"$current_file"; then
-        log_message "ERROR" " Failed to fetch: $clean_url" "$LINENO"
+        log_message "ERROR" "- Failed to fetch: $clean_url" "$LINENO"
         return 1
     fi
 
     # Normalize the content
     if ! normalize_content "$current_file"; then
-        log_message "ERROR" " Failed to normalize content for: $clean_url" "$LINENO"
+        log_message "ERROR" "- Failed to normalize content for: $clean_url" "$LINENO"
         return 1
     fi
     cp "$current_file" "$normalized_file"
 
     # Check if normalized file is empty
     if [ ! -s "$normalized_file" ]; then
-        log_message "WARN" " Normalized content for $clean_url is empty. Skipping further checks." "$LINENO"
+        log_message "WARN" "- Normalized content for $clean_url is empty. Skipping further checks." "$LINENO"
         return 1
     fi
 
@@ -1167,23 +1305,23 @@ check_website() {
 
                 # Notify if changes exceed threshold
                 if [[ "$change_percent" =~ ^[0-9.]+$ ]] && (($(echo "$change_percent >= $applied_threshold" | bc -l))); then
-                    local message="The website $clean_url has changed by $change_percent%!"
+                    local message="$SYSTEM_NAME: The website $clean_url has changed by $change_percent%!"
                     log_message "WARN" "$message" "$LINENO"
                     send_pushover_notification "NoirWatch Alert" "$message" "$clean_url"
                     send_desktop_notification "NoirWatch Alert" "$message"
                 else
-                    log_message "DEBUG" " Changes are below the threshold: ($change_percent%)" "$LINENO"
+                    log_message "DEBUG" "- Changes are below the threshold: ($change_percent%)" "$LINENO"
                 fi
             else
-                log_message "DEBUG" " No previous content found for: $clean_url" "$LINENO"
-                log_message "DEBUG" " Saving current content for future comparison." "$LINENO"
+                log_message "DEBUG" "- No previous content found for: $clean_url" "$LINENO"
+                log_message "DEBUG" "- Saving current content for future comparison." "$LINENO"
             fi
         else
-            log_message "DEBUG" " No changes detected for: $clean_url" "$LINENO"
+            log_message "DEBUG" "- No changes detected for: $clean_url" "$LINENO"
         fi
     else
-        log_message "DEBUG" " No previous hash found for: $clean_url" "$LINENO"
-        log_message "DEBUG" " Saving current content for future comparison." "$LINENO"
+        log_message "DEBUG" "- No previous hash found for: $clean_url" "$LINENO"
+        log_message "DEBUG" "- Saving current content for future comparison." "$LINENO"
     fi
 
     # Save the current hash and normalized content if there's no change
@@ -1193,17 +1331,11 @@ check_website() {
 }
 
 # ==============================
-# Web Monitoring Function
+# Application Functions
 # ==============================
 
-# Function: Start the monitoring process
-start_monitor() {
-    local datetime
-    datetime=$(date)
-    log_message "INFO" "Starting: $datetime" "$LINENO"
-    show_config
-    show_urls
-
+# Function: Start the main process
+main() {
     while true; do
         for URL in "${URLS[@]}"; do
             check_website "$URL"
@@ -1216,14 +1348,14 @@ start_monitor() {
 # Main Application Execution
 # ==============================
 
-# Call the function to check for required dependencies
-check_dependencies
-
 # Call the function to parse arguments
 parse_arguments "$@"
 
 # Call the function to process all the cli config options
 process_arguments
 
-# Call the function to run the check/monitor
+# Call the function to check for required dependencies
+check_dependencies
+
+# Call the main function to start the process
 start_process

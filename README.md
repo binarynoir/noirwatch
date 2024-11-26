@@ -349,8 +349,8 @@ THRESHOLD=0
 ### Network Check Configuration
 
 - `-i, --interval <minutes>`: Set the interval between checks (default is 15 minutes).
-- `-t, --threshold <percentage>`: Set the threshold percentage for detecting changes (default: 0%).
 - `-T, --timeout <seconds>`: Set the timeout for ping and DNS tests (default: 5 seconds).
+- `-t, --threshold <percentage>`: Set the threshold percentage for detecting changes (default: 0%).
 
 ### Process Management
 
@@ -386,7 +386,9 @@ Ensure you have the following installed on your system:
    CACHE_DIR="./test_cache"
    LOG_FILE="./test_noirwatch.log"
    CHECK_INTERVAL=1
+   TIMEOUT=5
    THRESHOLD=1
+   SYSTEM_NAME="test system"
    BACKGROUND=false
    PUSHOVER=false
    DESKTOP=false
@@ -410,10 +412,16 @@ Ensure you have the following installed on your system:
 5. **Run the Test Script:**
 
    ```bash
-   ./test_script.sh
+   ./test.sh
    ```
 
-6. **Clean Up Test Files (optional):**
+6. **Run the Test Script with a Custom Configuration File**:
+
+   ```bash
+   ./test.sh /path/to/custom_config_file
+   ```
+
+7. **Clean Up Test Files (optional)**:
 
    ```bash
    rm -rf ./test_cache
