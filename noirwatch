@@ -731,8 +731,6 @@ DESKTOP_NOTIFICATION=$DESKTOP_NOTIFICATION
 VERBOSE=$VERBOSE
 LOG_LEVEL="$LOG_LEVEL"
 
-# APP SPECIFIC SETTINGS
-
 # URL file
 URL_FILE="$URL_FILE"
 
@@ -1095,7 +1093,7 @@ process_arguments() {
     [[ -n "$CLI_CHECK_INTERVAL" ]] && CHECK_INTERVAL="$CLI_CHECK_INTERVAL"
     [[ -n "$CLI_TIMEOUT" ]] && TIMEOUT="$CLI_TIMEOUT"
     [[ -n "$CLI_THRESHOLD" ]] && THRESHOLD="$CLI_THRESHOLD"
-    [[ "$SHOW_CONFIG" = true ]] && show_config && exit
+    [[ "$SHOW_CONFIG" = true ]] && show_config && show_version && exit
     [[ "$SHOW_CONFIG_FILE" = true ]] && show_config_file
     [[ "$INIT" = true ]] && init_config
 
