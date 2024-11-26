@@ -7,7 +7,7 @@
 
 # App version and name
 APP_NAME="NoirWatch"
-VERSION=1.1.0
+VERSION=1.1.1
 LAST_UPDATED="2024-11-26"
 
 # TODO:
@@ -817,7 +817,7 @@ show_help() {
     # Network Check Configuration
     printf "\nNetwork Check Configuration:\n"
     printf "  -i, --interval <minutes>    Set the interval between checks (default is %d minutes).\n" "$CHECK_INTERVAL"
-    printf "  -T, --timeout <seconds>     Set the connection timeout for remote connections (default: %d seconds).\n" "${DNS_TEST_TIMEOUT:-5}"
+    printf "  -T, --timeout <seconds>     Set the connection timeout for remote connections (default: %d seconds).\n" "${TIMEOUT}"
     printf "  -t, --threshold <percentage> Set the threshold percentage for detecting changes. Higher values mean fewer notifications for minor changes. (default: %d%%)\n" "$THRESHOLD"
 
     # Process Management Functions
