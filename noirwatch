@@ -7,8 +7,8 @@
 
 # App version and name
 APP_NAME="NoirWatch"
-VERSION=1.1.1
-LAST_UPDATED="2024-11-26"
+VERSION=1.1.2
+LAST_UPDATED="2024-11-27"
 
 # TODO:
 #  - Add more notification methods (email, slack, discord, etc.)
@@ -1102,8 +1102,8 @@ process_arguments() {
     process_urls
 
     # Check if the array is empty
-    if [ ! $SHOW_STATUS && ! $SHOW_STOP && ${#URLS[@]} -eq 0 ]; then
-        log_message "ERROR" "Error: No URLS have been provided."
+    if [[ ! $SHOW_STATUS && ! $SHOW_STOP && ${#URLS[@]} -eq 0 ]]; then
+        log_message "ERROR" "Error: No URLS have been provided." "$LINENO"
         exit 1
     fi
 

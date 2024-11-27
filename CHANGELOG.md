@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- none
+
+## [1.1.2] - 2024-11-27
+
 ### Fixed
 
 - Not showing version info when displaying configuration
+- URL validation failing
 
 ## [1.1.1] - 2024-11-26
 
