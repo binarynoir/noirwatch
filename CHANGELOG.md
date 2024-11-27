@@ -13,8 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Not showing version info when displaying configuration
 - URL validation failing
+- Initialization of config uses old config for new settings file
+- Not showing version info when displaying configuration
 
 ## [1.1.1] - 2024-11-26
 

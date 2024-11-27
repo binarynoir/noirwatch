@@ -1068,7 +1068,7 @@ process_arguments() {
     [[ "$SHOW_HELP" = true ]] && show_help
 
     # Override config settings with command line options
-    load_config "$CONFIG_FILE"
+    [[ "$INIT" = false ]] && load_config "$CONFIG_FILE"
     [[ -n "$CLI_VERBOSE" ]] && VERBOSE="$CLI_VERBOSE"
     [[ -n "$CLI_CACHE_DIR" ]] && CACHE_DIR="$CLI_CACHE_DIR"
 
