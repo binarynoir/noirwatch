@@ -7,7 +7,7 @@
 
 # App version and name
 APP_NAME="NoirWatch"
-VERSION=1.2.0
+VERSION=1.2.1
 LAST_UPDATED="2024-11-29"
 
 # TODO:
@@ -1075,7 +1075,7 @@ parse_arguments() {
 process_arguments() {
 
     # Default configuration file location
-    CONFIG_FILE="$(get_config_path "$CONFIG_FILE")"
+    [[ "$CLI_CONFIG_FILE" = false ]] && CONFIG_FILE="$(get_config_path "$CONFIG_FILE")"
     CACHE_DIR="$(get_temp_path "$CACHE_DIR")"
     LOG_FILE="$CACHE_DIR/$LOG_FILE"
     PID_FILE="$CACHE_DIR/$PID_FILE"
@@ -1088,7 +1088,9 @@ process_arguments() {
     [[ "$SHOW_HELP" = true ]] && show_help
 
     # Override config settings with command line options
-    [[ "$INIT" = false ]] && load_config "$CONFIG_FILE"
+    if [[ -z "$INIT" || "$INIT" = false ]]; then
+        load_config "$CONFIG_FILE"
+    fi
     [[ -n "$CLI_VERBOSE" ]] && VERBOSE="$CLI_VERBOSE"
     [[ -n "$CLI_CACHE_DIR" ]] && CACHE_DIR="$CLI_CACHE_DIR"
 
@@ -1113,8 +1115,8 @@ process_arguments() {
     [[ -n "$CLI_CHECK_INTERVAL" ]] && CHECK_INTERVAL="$CLI_CHECK_INTERVAL"
     [[ -n "$CLI_TIMEOUT" ]] && TIMEOUT="$CLI_TIMEOUT"
     [[ -n "$CLI_THRESHOLD" ]] && THRESHOLD="$CLI_THRESHOLD"
-    [[ "$SHOW_CONFIG" = true ]] && show_config && show_version && exit
     [[ "$SHOW_CONFIG_FILE" = true ]] && show_config_file
+    [[ "$SHOW_CONFIG" = true ]] && show_config && show_version && exit
     [[ "$INIT" = true ]] && init_config
 
     # Override URL settings with command line options
