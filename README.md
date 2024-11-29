@@ -12,7 +12,7 @@ NoirWatch monitors specified websites for changes and sends notifications. It su
 - Send notifications via Pushover and native desktop notifications (macOS, Linux, Windows)
 - Configurable check intervals
 - Verbose logging with different log levels
-- Run as a background service
+- Background execution support
 - Customizable configuration and URL list files
 
 ## Feature Roadmap
@@ -25,10 +25,11 @@ NoirWatch monitors specified websites for changes and sends notifications. It su
 - [ ] Output change averages for all urls
 - [ ] Add averages to notifications
 - [ ] Full historical average change report
+- [ ] Add more notification methods (email, slack, discord, teams, Telegram etc.)
 
 ## Requirements
 
-- Bash
+- Bash 4.0+
 - `curl` for fetching website content
 - `sed` for HTML content normalization
 - `xmllint` for HTML content normalization
@@ -298,9 +299,10 @@ CONFIG_FILE="~/.config/noirwatch.conf"
 URL_FILE="~/.config/noirwatch_urls.conf"
 CHECK_INTERVAL=15
 TIMEOUT=5
+SYSTEM_NAME="My System"
 PUSHOVER_NOTIFICATION=false
-PUSHOVER_API_TOKEN=""
 PUSHOVER_USER_KEY=""
+PUSHOVER_API_TOKEN=""
 DESKTOP_NOTIFICATION=true
 VERBOSE=false
 LOG_LEVEL="INFO"
@@ -317,21 +319,22 @@ THRESHOLD=0
 ### Configuration and Initialization
 
 - `-c, --config <config_file>`: Specify a custom configuration file.
-- `-I, --init`: Initialize the configuration file.
-- `-F, --force-init`: Force initialize the configuration file if one exists.
-- `-s, --show-config`: Show the configuration settings.
-- `-S, --show-config-file`: Show the configuration file.
+- `-i, --init`: Initialize the configuration file.
+- `-f, --force-init`: Force initialize the configuration file if one exists.
+- `-S, --show-config`: Show the configuration settings.
+- `-e, --show-config-file`: Show the configuration file.
 
 ### Cache Management
 
-- `-C, --clean`: Delete all cached files.
-- `-k, --cache-dir <path>`: Specify a custom cache directory.
+- `-x, --clean`: Delete all cached files.
+- `-C, --cache-dir <path>`: Specify a custom cache directory.
 
 ### Notification Options
 
+- `-n, --system-name`: Name of the system running the script.
 - `-p, --pushover`: Send Pushover notifications.
-- `-a, --api-token <token>`: Specify the API token for Pushover notifications.
 - `-u, --user-key <key>`: Specify the user key for Pushover notifications.
+- `-a, --api-token <token>`: Specify the API token for Pushover notifications.
 - `-d, --desktop`: Send desktop notifications using AppleScript.
 
 ### Logging and Output
@@ -346,17 +349,18 @@ THRESHOLD=0
 - `-f, --url-file <file>`: Specify a file containing a list of URLs to monitor.
 - `-U, --list-urls`: List all watched URLs.
 
-### Network Check Configuration
+### Remote Connection Configuration
 
 - `-i, --interval <minutes>`: Set the interval between checks (default is 15 minutes).
 - `-T, --timeout <seconds>`: Set the timeout for ping and DNS tests (default: 5 seconds).
-- `-t, --threshold <percentage>`: Set the threshold percentage for detecting changes (default: 0%).
+- `-H, --threshold <percentage>`: Set the threshold percentage for detecting changes (default: 0%).
 
 ### Process Management
 
-- `-r, --start`: Start the network check service in the background.
-- `-t, --stop`: Stop the network check service.
-- `-z, --status`: Check the current status of the network check service.
+- `-s, --start`: Start the AppName service in the background.
+- `-k, --stop`: Stop the AppName service.
+- `-r, --restart`: Restart the AppName service.
+- `-t, --status`: Check the current status of the AppName service.
 
 ## Instructions for Running the Tests
 

@@ -7,8 +7,8 @@
 
 # App version and name
 APP_NAME="NoirWatch"
-VERSION=1.1.2
-LAST_UPDATED="2024-11-27"
+VERSION=1.2.0
+LAST_UPDATED="2024-11-29"
 
 # TODO:
 #  - Add more notification methods (email, slack, discord, etc.)
@@ -569,11 +569,24 @@ stop_service() {
     if kill -0 "$pid" >/dev/null 2>&1; then
         log_message "INFO" "Stopping $APP_NAME service with PID $pid..." "$LINENO"
         kill "$pid"
+        cleanup_pid
         log_message "INFO" "$APP_NAME service stopped." "$LINENO"
     else
         log_message "WARN" "No active $APP_NAME process found for PID $pid. Cleaning up stale PID file." "$LINENO"
         cleanup_pid
     fi
+}
+
+# Function: Restart the service
+restart_service() {
+    if [[ ! -f "$PID_FILE" ]]; then
+        log_message "INFO" "No $APP_NAME service is currently running." "$LINENO"
+        exit 0
+    fi
+
+    log_message "INFO" "Restarting $APP_NAME service with PID $pid..." "$LINENO"
+    stop_service
+    start_service
 }
 
 # Function: Check the status of the service
@@ -630,22 +643,25 @@ start_process() {
     fi
 
     # Check if an instance is already running
-    check_already_running
-
-    # Log and start the configuration
-    log_message "INFO" "Starting $APP_NAME: $(date)" "$LINENO"
-    show_config
-    show_urls
-
-    # Start the service or run interactively
-    if [[ "$START_SERVICE" == true ]]; then
-        start_service
+    if [[ "$RESTART_SERVICE" == true ]]; then
+        restart_service
     else
-        log_message "INFO" "Running network check interactively..." "$LINENO"
-        # Set up a trap for cleanup on termination
-        trap 'cleanup_pid' EXIT
-        echo $$ >"$PID_FILE"
-        main
+        check_already_running
+
+        # Log and start the configuration
+        log_message "INFO" "Starting $APP_NAME: $(date)" "$LINENO"
+        show_config
+
+        # Start the service or run interactively
+        if [[ "$START_SERVICE" == true ]]; then
+            start_service
+        else
+            log_message "INFO" "Running network check interactively..." "$LINENO"
+            # Set up a trap for cleanup on termination
+            trap 'cleanup_pid' EXIT
+            echo $$ >"$PID_FILE"
+            main
+        fi
     fi
 }
 
@@ -781,15 +797,15 @@ show_help() {
     # Configuration and Initialization
     printf "\nConfiguration and Initialization:\n"
     printf "  -c, --config <config_file>  Specify a custom configuration file (default: %s).\n" "${CONFIG_FILE}"
-    printf "  -I, --init                  Initialize the configuration file.\n"
-    printf "  -F, --force-init            Force initialize of the configuration file if one exists.\n"
-    printf "  -s, --show-config           Show the configuration settings.\n"
-    printf "  -S, --show-config-file      Show the configuration file.\n"
+    printf "  -i, --init                  Initialize the configuration file.\n"
+    printf "  -f, --force-init            Force initialize of the configuration file if one exists.\n"
+    printf "  -S, --show-config           Show the configuration settings.\n"
+    printf "  -e, --show-config-file      Show the configuration file.\n"
 
     # Cache Management
     printf "\nCache Management:\n"
-    printf "  -C, --clean                 Delete all cached files.\n"
-    printf "  -k, --cache-dir  <path>     Specify a custom cache directory (default: %s).\n" "$CACHE_DIR}"
+    printf "  -x, --clean                 Delete all cached files.\n"
+    printf "  -C, --cache-dir  <path>     Specify a custom cache directory (default: %s).\n" "$CACHE_DIR}"
 
     # Notification Options
     printf "\nNotification Options:\n"
@@ -812,17 +828,18 @@ show_help() {
     printf "  -U, --list-urls           List all watched URLs.\n"
     printf "  -C, --clean               Delete all cached files.\n"
 
-    # Network Check Configuration
-    printf "\nNetwork Check Configuration:\n"
-    printf "  -i, --interval <minutes>    Set the interval between checks (default is %d minutes).\n" "$CHECK_INTERVAL"
+    # Remote Connection Configuration
+    printf "\nRemote Connection Configuration:\n"
+    printf "  -I, --interval <seconds>    Set the interval between checks (default: %d seconds).\n" "${CHECK_INTERVAL}"
     printf "  -T, --timeout <seconds>     Set the connection timeout for remote connections (default: %d seconds).\n" "${TIMEOUT}"
-    printf "  -t, --threshold <percentage> Set the threshold percentage for detecting changes. Higher values mean fewer notifications for minor changes. (default: %d%%)\n" "$THRESHOLD"
+    printf "  -H, --threshold <percentage> Set the threshold percentage for detecting changes. Higher values mean fewer notifications for minor changes. (default: %d%%)\n" "$THRESHOLD"
 
     # Process Management Functions
     printf "\nProcess Management:\n"
-    printf "  -r, --start                 Start the network check service in the background.\n"
-    printf "  -t, --stop                  Stop the network check service.\n"
-    printf "  -z, --status                Check the current status of the network check service.\n"
+    printf "  -s, --start                 Start the %s service in the background.\n" "${APP_NAME}"
+    printf "  -k, --stop                  Stop the %s service.\n" "${APP_NAME}"
+    printf "  -r, --restart               Restart the %s service.\n" "${APP_NAME}"
+    printf "  -t, --status                Check the current status of the %s service.\n" "${APP_NAME}"
 
     # Examples
     printf "\nExamples:\n"
@@ -883,16 +900,16 @@ parse_arguments() {
             CLI_CONFIG_FILE=true
             shift
             ;;
-        --init | -I)
+        --init | -i)
             INIT=true
             ;;
-        --force-init | -F)
+        --force-init | -f)
             INIT_FORCE=true
             ;;
-        --show-config | -s)
+        --show-config | -S)
             SHOW_CONFIG=true
             ;;
-        --show-config-file | -S)
+        --show-config-file | -e)
             SHOW_CONFIG_FILE=true
             ;;
 
@@ -911,7 +928,7 @@ parse_arguments() {
         --list-urls | -U)
             SHOW_URL=true
             ;;
-        --threshold | -t)
+        --threshold | -H)
             if [[ -z "$2" || "$2" == -* ]]; then
                 printf "Error: --threshold requires a value\n"
                 exit 1
@@ -921,10 +938,10 @@ parse_arguments() {
             ;;
 
         # Cache Management
-        --clean | -C)
+        --clean | -x)
             CLEAN=true
             ;;
-        --cache-dir | -k)
+        --cache-dir | -C)
             if [[ -z "$2" || "$2" == -* ]]; then
                 printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
@@ -995,8 +1012,8 @@ parse_arguments() {
             fi
             ;;
 
-        # Network Check Configuration
-        --interval | -i)
+        # Remote Connection Configuration
+        --interval | -I)
             if [[ -z "$2" || "$2" == -* ]]; then
                 printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
@@ -1018,13 +1035,16 @@ parse_arguments() {
             ;;
 
         # Process Management
-        --start | -r)
+        --start | -s)
             START_SERVICE=true
             ;;
-        --stop | -t)
+        --stop | -k)
             STOP_SERVICE=true
             ;;
-        --status | -z)
+        --restart | -r)
+            RESTART_SERVICE=true
+            ;;
+        --status | -t)
             SHOW_STATUS=true
             ;;
 

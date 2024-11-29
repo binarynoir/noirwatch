@@ -1,4 +1,4 @@
-.TH NOIRWATCH 1 "November 26, 2024" "NoirWatch 1.1.2" "User Commands"
+.TH NOIRWATCH 1 "November 29, 2024" "NoirWatch 1.2.0" "User Commands"
 .SH NAME
 NoirWatch \- Monitor specified websites for changes and send notifications.
 .SH SYNOPSIS
@@ -18,22 +18,22 @@ Display the application version.
 .B \-c, \--config <config_file>
 Specify a custom configuration file (default: ~/.config/noirwatch.conf).
 .TP
-.B \-I, \--init
+.B \-i, \--init
 Initialize the configuration file.
 .TP
-.B \-F, \--force-init
+.B \-f, \--force-init
 Force initialize the configuration file if one exists.
 .TP
-.B \-s, \--show-config
+.B \-S, \--show-config
 Show the configuration settings.
 .TP
-.B \-S, \--show-config-file
+.B \-e, \--show-config-file
 Show the configuration file.
 .TP
-.B \-C, \--clean
+.B \-x, \--clean
 Delete all cached files.
 .TP
-.B \-k, \--cache-dir <path>
+.B \-C, \--cache-dir <path>
 Specify a custom cache directory (default: /tmp/noirwatch_cache/).
 .TP
 .B \-n, \--system-name <name>
@@ -69,23 +69,29 @@ Specify a file containing a list of URLs to monitor (default: ~/.config/noirwatc
 .B \-U, \--list-urls
 List all watched URLs.
 .TP
-.B \-i, \--interval <minutes>
+.B \-I, \--interval <minutes>
 Set the interval between checks (default is 60 minutes).
 .TP
 .B \-T, \--timeout <seconds>
 Set the connection timeout for remote connections (default: 5 seconds).
 .TP
-.B \-t, \--threshold <percentage>
+.B \-H, \--threshold <percentage>
 Set the threshold percentage for detecting changes.
 .TP
-.B \-r, \--start
+.B \-s, \--start
 Start the network check service in the background.
 .TP
-.B \-t, \--stop
+.B \-k, \--stop
 Stop the network check service.
 .TP
-.B \-z, \--status
+.B \-r, \--restart
+Restart the network check service.
+.TP
+.B \-t, \--status
 Check the current status of the network check service.
+.TP
+.B \-\-, \--
+End of options.
 .SH EXAMPLES
 .TP
 Run interactively with default settings:
