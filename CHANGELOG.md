@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - none
 
+## [1.2.0] - 2024-11-29
+
+### Added
+
+- Restart service command line option
+
+### Changed
+
+- Updated single character command line options for consistency
+- Documentation to reflect all changes in the latest release
+
+### Fixed
+
+- Failure to remove PID file on service stop
+
 ## [1.1.2] - 2024-11-27
 
 ### Fixed
