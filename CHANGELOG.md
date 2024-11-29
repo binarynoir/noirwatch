@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- none
+### Changed
+
+- Output the app name in message that the app is running interactively
 
 ## [1.2.0] - 2024-11-29
 

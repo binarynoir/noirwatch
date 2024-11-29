@@ -656,7 +656,7 @@ start_process() {
         if [[ "$START_SERVICE" == true ]]; then
             start_service
         else
-            log_message "INFO" "Running network check interactively..." "$LINENO"
+            log_message "INFO" "Running $APP_NAME interactively..." "$LINENO"
             # Set up a trap for cleanup on termination
             trap 'cleanup_pid' EXIT
             echo $$ >"$PID_FILE"
