@@ -21,7 +21,9 @@ NoirWatch monitors specified websites for changes and sends notifications. It su
 - [x] Send notifications via Pushover
 - [x] Send notifications via native desktop notifications (macOS, Linux, Windows)
 - [x] Run as a background service
-- [ ] Run the check a specific number of times and then exit
+- [x] Run a custom script on change detection
+- [x] Run the check a specific number of times and then exit
+- [x] Robust configuration using JSON which includes per URL options
 - [ ] Output change averages for all urls
 - [ ] Add averages to notifications
 - [ ] Full historical average change report
@@ -32,6 +34,7 @@ NoirWatch monitors specified websites for changes and sends notifications. It su
 - Bash 4.0+
 - `curl` for fetching website content
 - `sed` for HTML content normalization
+- `timeout` for custom command files
 - `xmllint` for HTML content normalization
 - `powershell` for Windows desktop notifications
 - `notify-send` for Linux desktop notifications
@@ -291,22 +294,43 @@ NoirWatch uses a configuration file to store default settings. The default locat
 
 ### Example Configuration File
 
-```bash
-# NoirWatch Configuration File
-CACHE_DIR="/tmp/noirwatch_cache"
-LOG_FILE="/tmp/noirwatch_cache/noirwatch.log"
-CONFIG_FILE="~/.config/noirwatch.conf"
-URL_FILE="~/.config/noirwatch_urls.conf"
-CHECK_INTERVAL=15
-TIMEOUT=5
-SYSTEM_NAME="My System"
-PUSHOVER_NOTIFICATION=false
-PUSHOVER_USER_KEY=""
-PUSHOVER_API_TOKEN=""
-DESKTOP_NOTIFICATION=true
-VERBOSE=false
-LOG_LEVEL="INFO"
-THRESHOLD=0
+```json
+{
+	"configuration": {
+		"CACHE_DIR": "/tmp/noirwatch_cache",
+		"LOG_FILE": "/tmp/noirwatch_cache/noirwatch.log",
+		"CHECK_INTERVAL": "60s",
+		"TIMEOUT": "5s",
+		"SYSTEM_NAME": "Test System",
+		"PUSHOVER_NOTIFICATION": "false",
+		"PUSHOVER_USER_KEY": "",
+		"PUSHOVER_API_TOKEN": "",
+		"DESKTOP_NOTIFICATION": "false",
+		"VERBOSE": "true",
+		"LOG_LEVEL": "DEBUG",
+		"THRESHOLD": "0"
+	},
+	"urls": {
+		"default": [
+			{
+				"NAME": "Apple Newsroom",
+				"URL": "https://www.apple.com/newsroom/",
+				"TIMEOUT": "5s",
+				"THRESHOLD": "1",
+				"UPDATED_CMD": "./test/test_cmd.sh",
+				"CMD_TIMEOUT": "5s"
+			},
+			{
+				"NAME": "9to5mac Homepage",
+				"URL": "https://9to5mac.com",
+				"TIMEOUT": "10s",
+				"THRESHOLD": "5",
+				"UPDATED_CMD": "./test/test_cmd.sh",
+				"CMD_TIMEOUT": "5s"
+			}
+		]
+	}
+}
 ```
 
 ## Options
@@ -344,16 +368,12 @@ THRESHOLD=0
 - `-o, --output <file>`: Specify a custom log file location.
 - `-L, --log-level <level>`: Set the log level (FATAL, ERROR, WARN, INFO, DEBUG).
 
-### URL Management
-
-- `-f, --url-file <file>`: Specify a file containing a list of URLs to monitor.
-- `-U, --list-urls`: List all watched URLs.
-
 ### Remote Connection Configuration
 
 - `-i, --interval <minutes>`: Set the interval between checks (default is 15 minutes).
 - `-T, --timeout <seconds>`: Set the timeout for ping and DNS tests (default: 5 seconds).
 - `-H, --threshold <percentage>`: Set the threshold percentage for detecting changes (default: 0%).
+- `-U, --list-urls`: List all watched URLs.
 
 ### Process Management
 
@@ -383,21 +403,43 @@ Ensure you have the following installed on your system:
 
 2. **Update the Test Configuration File:** Open the test_noirwatch.conf file in your preferred text editor and ensure it contains the following configuration:
 
-   ```bash
-   # NoirWatch Configuration File
-   CONFIG_FILE="./test_noirwatch.conf"
-   URL_FILE="./test_urls.conf"
-   CACHE_DIR="./test_cache"
-   LOG_FILE="./test_noirwatch.log"
-   CHECK_INTERVAL=1
-   TIMEOUT=5
-   THRESHOLD=1
-   SYSTEM_NAME="test system"
-   BACKGROUND=false
-   PUSHOVER=false
-   DESKTOP=false
-   VERBOSE=true
-   LOG_LEVEL="DEBUG"
+   ```json
+   {
+   	"configuration": {
+   		"CACHE_DIR": "./test/cache",
+   		"LOG_FILE": "./test/cache/noirwatch.log",
+   		"CHECK_INTERVAL": "60s",
+   		"TIMEOUT": "5s",
+   		"SYSTEM_NAME": "Test System",
+   		"PUSHOVER_NOTIFICATION": "false",
+   		"PUSHOVER_USER_KEY": "",
+   		"PUSHOVER_API_TOKEN": "",
+   		"DESKTOP_NOTIFICATION": "false",
+   		"VERBOSE": "true",
+   		"LOG_LEVEL": "DEBUG",
+   		"THRESHOLD": "0"
+   	},
+   	"urls": {
+   		"default": [
+   			{
+   				"NAME": "Apple Newsroom",
+   				"URL": "https://www.apple.com/newsroom/",
+   				"TIMEOUT": "5s",
+   				"THRESHOLD": "1",
+   				"UPDATED_CMD": "./test/test_cmd.sh",
+   				"CMD_TIMEOUT": "5s"
+   			},
+   			{
+   				"NAME": "9to5mac Homepage",
+   				"URL": "https://9to5mac.com",
+   				"TIMEOUT": "10s",
+   				"THRESHOLD": "5",
+   				"UPDATED_CMD": "./test/test_cmd.sh",
+   				"CMD_TIMEOUT": "5s"
+   			}
+   		]
+   	}
+   }
    ```
 
 3. **Update the Test URL File:** Open the test_urls.conf file in your preferred text editor and ensure it contains the following URLs:

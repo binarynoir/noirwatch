@@ -7,8 +7,8 @@
 
 # App version and name
 APP_NAME="NoirWatch"
-VERSION=1.2.1
-LAST_UPDATED="2024-11-29"
+VERSION=1.3.0
+LAST_UPDATED="2024-12-20"
 
 # TODO:
 #  - Add more notification methods (email, slack, discord, etc.)
@@ -17,35 +17,44 @@ LAST_UPDATED="2024-11-29"
 # Application Specific Variables
 # ==============================
 
+# Initialize CLI URLS as an empty array
+CLI_URLS=()
+
+# Default threshold percentage (higher is less sensitive)
+THRESHOLD=0
+
 # Application specific dependencies
-DEPENDENCIES=("xmllint")
+DEPENDENCIES=("timeout" "xmllint")
 
 # ==============================
 # Base Application Variables
 # ==============================
 
 # Default configuration file location (full default path added during initialization)
-CONFIG_FILE="$(basename "$0").conf"
-CLI_CONFIG_FILE=false
+CONFIG_FILE_NAME="$(basename "$0").json"
+SKIP_CONFIG_KEYS=("PID_FILE")
 
 # Master directory to store all cache files (full default path added during initialization)
 CACHE_DIR="$(basename "$0")_cache"
 
 # Default log file location (full default path added during initialization)
-LOG_FILE="$(basename "$0").log"
+LOG_FILE_NAME="$(basename "$0").log"
 INIT_FORCE=false
 
 # Lock file (full default path added during initialization)
-PID_FILE="$(basename "$0").pid"
+PID_FILE_NAME="$(basename "$0").pid"
 
 # Service mode flag
 IS_SERVICE=false
 
 # Default check interval (in seconds)
-CHECK_INTERVAL=60
+CHECK_INTERVAL="60s"
 
 # Default timeout interval (in seconds)
-TIMEOUT=5
+TIMEOUT="5s"
+
+# Default check repeat (0=infinite)
+REPEAT=0
 
 # Pushover notification options
 PUSHOVER_NOTIFICATION=false
@@ -53,7 +62,7 @@ PUSHOVER_USER_KEY=
 PUSHOVER_API_TOKEN=
 
 # Native desktop notification options
-DESKTOP_NOTIFICATION=true
+DESKTOP_NOTIFICATION=false
 
 # Log levels
 # Define log levels directly as an associative array
@@ -73,21 +82,13 @@ SYSTEM_NAME=""
 # ANSI color codes
 RED='\033[0;31m'
 RED_BG='\033[41m'
+GREEN='\033[0;32m'
+GREEN_BG='\033[42m'
 YELLOW='\033[1;33m'
+YELLOW_BG='\033[43m'
+ORANGE='\033[0;33m'
+ORANGE_BG='\033[43m'
 NC='\033[0m' # No Color
-
-# ==============================
-# Application Specific Variables
-# ==============================
-
-# Default URL list file location (full default path added during initialization)
-URL_FILE="noirwatch_urls.conf"
-
-# Initialize URLS as an empty array
-URLS=()
-
-# Default threshold percentage (higher is less sensitive)
-THRESHOLD=0
 
 # ==============================
 # Utility Functions
@@ -101,7 +102,23 @@ show_version() {
 
 # Function: Check for required command-line utilities
 check_dependencies() {
-    DEPENDENCIES+=("cat" "curl" "sed")
+    DEPENDENCIES+=("cat" "curl" "hostname" "jq" "sed")
+
+    case "$OSTYPE" in
+    linux*)
+        DEPENDENCIES+=("realpath")
+        ;;
+    darwin*)
+        DEPENDENCIES+=("grealpath")
+        ;;
+    cygwin* | msys* | win32*)
+        DEPENDENCIES+=("powershell")
+        ;;
+    *)
+        log_message "FATAL" "Unsupported OS: $OSTYPE" "$LINENO"
+        exit 1
+        ;;
+    esac
 
     for cmd in "${DEPENDENCIES[@]}"; do
         # Debug log for each dependency being checked
@@ -141,13 +158,22 @@ normalize_path() {
     local normalized_path
 
     case "$OSTYPE" in
-    linux* | darwin*)
+    linux*)
         if command -v realpath >/dev/null 2>&1; then
-            # Use `realpath -m` if available for non-existent paths
-            normalized_path=$(realpath -m "$path" 2>/dev/null || echo "$(cd "$(dirname "$path")" && pwd)/$(basename "$path")")
+            # Use `realpath -m` for non-existent paths on Linux
+            normalized_path=$(realpath -m "$path" 2>/dev/null || echo "$(realpath -m "$(dirname "$path")")/$(basename "$path")")
         else
-            # Fallback for systems without `realpath`
-            normalized_path=$(cd "$(dirname "$path")" && pwd)/$(basename "$path")
+            echo "realpath not found on Linux" >&2
+            exit 1
+        fi
+        ;;
+    darwin*)
+        if command -v grealpath >/dev/null 2>&1; then
+            # Use `grealpath -m` for non-existent paths on macOS
+            normalized_path=$(grealpath -m "$path" 2>/dev/null || echo "$(grealpath -m "$(dirname "$path")")/$(basename "$path")")
+        else
+            echo "grealpath not found on macOS. Install it using 'brew install coreutils'" >&2
+            exit 1
         fi
         ;;
     cygwin* | msys* | win32*)
@@ -161,6 +187,13 @@ normalize_path() {
     esac
 
     echo "$normalized_path"
+}
+
+# Function: Normalize filenames
+normalize_filename() {
+    local filename="$1"
+    filename=$(echo "$filename" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -d '\\/:*?"<>|')
+    echo "$filename"
 }
 
 # Function: Get the root configuration directory and set the config file path
@@ -207,6 +240,92 @@ get_temp_path() {
     echo "$(normalize_path "$full_path")"
 }
 
+# Function: Edit a specified file
+edit_file() {
+    local file="$1"
+
+    if [[ -z "$file" ]]; then
+        log_message "FATAL" "No file specified to edit." "$LINENO"
+        exit 1
+    fi
+
+    if [[ ! -f "$file" ]]; then
+        log_message "FATAL" "File not found: $file" "$LINENO"
+        exit 1
+    fi
+
+    if [[ -n "$EDITOR" ]]; then
+        if command -v "$EDITOR" &>/dev/null; then
+            "$EDITOR" "$file"
+            exit 0
+        else
+            log_message "FATAL" "Specified editor '$EDITOR' is not available." "$LINENO"
+            exit 1
+        fi
+    fi
+
+    case "$OSTYPE" in
+    darwin*)
+        open "$file"
+        ;;
+    linux*)
+        xdg-open "$file"
+        ;;
+    cygwin* | msys* | win32*)
+        start "" "$file"
+        ;;
+    *)
+        log_message "FATAL" "Unsupported OS: $OSTYPE" "$LINENO"
+        exit 1
+        ;;
+    esac
+
+    exit 0
+}
+
+# Function: Convert a frequency/interval string to seconds
+get_interval_in_seconds() {
+    local input_frequency="$1" # Input frequency/interval string
+    local interval             # Variable to store the converted interval in seconds
+
+    # Check if the input is a number without any unit
+    if [[ "$input_frequency" =~ ^[0-9]+$ ]]; then
+        interval=$input_frequency # Default to seconds if no unit is specified
+    else
+        # Determine the unit and convert accordingly
+        case "${input_frequency: -1}" in
+        s) interval=${input_frequency%?} ;;              # Seconds
+        m) interval=$((${input_frequency%?} * 60)) ;;    # Minutes to seconds
+        h) interval=$((${input_frequency%?} * 3600)) ;;  # Hours to seconds
+        d) interval=$((${input_frequency%?} * 86400)) ;; # Days to seconds
+        *)
+            echo "Invalid frequency format"
+            return 1
+            ;; # Handle invalid formats
+        esac
+    fi
+
+    echo "$interval" # Return the interval in seconds
+}
+
+# Function: Convert date to human-readable format
+convert_date() {
+    local date_str="$1"
+    local human_readable_date
+
+    if [[ "$OSTYPE" == "linux"* ]]; then
+        human_readable_date=$(date -d "$date_str" +"%Y-%m-%d %H:%M:%S %Z")
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        human_readable_date=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$date_str" +"%Y-%m-%d %H:%M:%S %Z")
+    elif [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+        human_readable_date=$(date -d "$date_str" +"%Y-%m-%d %H:%M:%S %Z")
+    else
+        human_readable_date="$date_str"
+    fi
+
+    echo "$human_readable_date"
+}
+
 # ==============================
 # Logging and Messaging Functions
 # ==============================
@@ -236,22 +355,27 @@ log_to_console() {
     local timestamp=$(date -u "+%Y-%m-%dT%H:%M:%SZ")
     local output_message="$message"
 
+    # If verbose mode or debug level is enabled, format the output with timestamp and log level
     if [[ "$VERBOSE" = true || "$LOG_LEVEL" = "DEBUG" ]]; then
         output_message="$timestamp [$log_level_name] $message (Line: $line_number)"
     fi
 
+    # Escape special characters to avoid issues with printf
+    local safe_message=$(printf "%s" "$output_message" | sed 's/[^[:print:]\t]//g') # Remove non-printable characters
+
+    # Handle different log levels
     case $log_level_name in
     "FATAL")
-        printf "${RED_BG}%b${NC}\n" "$output_message" >&2
+        printf "${RED_BG}%b${NC}\n" "$safe_message" >&2
         ;;
     "ERROR")
-        printf "${RED}%b${NC}\n" "$output_message" >&2
+        printf "${RED}%b${NC}\n" "$safe_message" >&2
         ;;
     "WARN")
-        printf "${YELLOW}%b${NC}\n" "$output_message" >&2
+        printf "${YELLOW}%b${NC}\n" "$safe_message" >&2
         ;;
     *)
-        printf "%b${NC}\n" "$output_message" >&2
+        printf "%b${NC}\n" "$safe_message" >&2
         ;;
     esac
 }
@@ -285,9 +409,12 @@ log_message() {
         formatted_message="$formatted_message (Line: $line_number)"
     fi
 
+    # Escape special characters in the message to prevent breaking formatting
+    local safe_message=$(printf "%s" "$formatted_message" | sed 's/[^[:print:]\t]//g')
+
     # Log to file if the log level meets the criteria and the log file exists
     if log_at_or_above "$log_level_name" && [[ -f "$LOG_FILE" ]]; then
-        printf "%s\n" "$formatted_message" >>"$LOG_FILE" 2>/dev/null || true
+        printf "%s\n" "$safe_message" >>"$LOG_FILE" 2>/dev/null || true
     fi
 
     # Always log to the console if not running as a service, or if no log file exists
@@ -298,6 +425,16 @@ log_message() {
 
 # Function: Initialize the log file
 init_log() {
+    # Ensure the directory for the log file exists
+    log_dir=$(dirname "$LOG_FILE")
+    if [ ! -d "$log_dir" ]; then
+        printf "Log file directory %s does not exist. Creating it...\n" "$log_dir"
+        mkdir -p "$log_dir" || {
+            log_message "FATAL" "Failed to create directory: $log_dir" "$LINENO"
+            exit 1
+        }
+    fi
+
     if [ -z "$LOG_FILE" ]; then
         log_message "FATAL" "LOG_FILE variable is not set." "$LINENO"
         exit 1
@@ -339,7 +476,7 @@ show_log() {
 is_mount_point() {
     local dir="$1"
 
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    if [[ "$OSTYPE" == "linux"* ]]; then
         # Use `findmnt` if available on Linux
         if command -v findmnt >/dev/null 2>&1; then
             findmnt -n -o TARGET --target "$dir" >/dev/null 2>&1
@@ -444,7 +581,7 @@ send_desktop_notification() {
             if ! osascript -e "display notification \"$message\" with title \"$title\""; then
                 log_message "ERROR" "Failed to send notification on macOS." "$LINENO"
             fi
-        elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        elif [[ "$OSTYPE" == "linux"* ]]; then
             if command -v notify-send &>/dev/null; then
                 notify-send "$title" "$message"
             else
@@ -468,9 +605,9 @@ send_pushover_notification() {
     local response
 
     if [ "$PUSHOVER_NOTIFICATION" = true ]; then
-        log_message "DEBUG" "- Processing Pushover notification: $website_url" "$LINENO"
-        log_message "DEBUG" "- Url: $website_url" "$LINENO"
-        log_message "DEBUG" "- Message: $message" "$LINENO"
+        log_message "DEBUG" "Processing Pushover notification: $website_url" "$LINENO"
+        log_message "DEBUG" "Url: $website_url" "$LINENO"
+        log_message "DEBUG" "Message: $message" "$LINENO"
 
         # Check if PUSHOVER_API_TOKEN is set
         if [[ -z "$PUSHOVER_API_TOKEN" ]]; then
@@ -515,7 +652,7 @@ send_pushover_notification() {
             return 1
         fi
 
-        log_message "DEBUG" "- Pushover notification sent successfully." "$LINENO"
+        log_message "DEBUG" "Pushover notification sent successfully." "$LINENO"
         return 0
     fi
 }
@@ -669,17 +806,60 @@ start_process() {
 # Configuration and Initialization Functions
 # ==============================
 
-# Function: Load configuration
+# Function: Load configuration from JSON file
 load_config() {
     local config_file_path="$1"
-    if [ -f "$config_file_path" ]; then
-        source "$config_file_path"
-    else
-        if [ $CLI_CONFIG_FILE = true ]; then
-            log_message "INFO" "Configuration file not found: $config_file_path" "$LINENO"
-            exit 1
-        fi
+
+    if key_exists "CONFIG_FILE" SKIP_CONFIG_KEYS[@] && [[ ! -f "$config_file_path" ]]; then
+        log_message "FATAL" "Configuration file not found: $config_file_path" "$LINENO"
+        exit 1
+    elif ! key_exists "CONFIG_FILE" SKIP_CONFIG_KEYS[@] && [[ ! -f "$config_file_path" ]]; then
+        return 0
     fi
+
+    # Use jq to parse the JSON and set environment variables
+    local jq_output
+    jq_output=$(jq -r '.configuration | to_entries | .[] | "\(.key)=\(.value)"' "$config_file_path")
+    log_message "DEBUG" "Configuration file settings: $jq_output" "$LINENO"
+
+    while IFS="=" read -r key value; do
+        # Skip empty lines, invalid entries, or keys that are in the skip_keys array
+        if [[ -n "$key" && -n "$value" && ! " ${SKIP_CONFIG_KEYS[@]} " =~ " ${key} " && "$key" != "CONFIG_FILE" ]]; then
+            [[ "$key" == *_DIR || "$key" == *_FILE || "$key" == *_CMD ]] && value="$(normalize_path "$value")"
+            export "$key"="$value"
+            log_message "DEBUG" "Setting $key=$value" "$LINENO"
+        fi
+    done <<<"$jq_output"
+}
+
+# Function: Get all "connections" groups and return them in an array
+get_connection_groups() {
+    local config_file_path="$1"
+    jq -r '.urls | keys | sort[]' "$config_file_path"
+}
+
+# Function: Check if a key exists in the SKIP_CONFIG_KEYS
+key_exists() {
+    local key="$1"
+
+    if [[ " ${SKIP_CONFIG_KEYS[@]} " =~ " ${key} " ]]; then
+        return 0 # Key exists
+    fi
+
+    return 1 # Key does not exist
+}
+
+# Function: Get URL settings as key-value pairs
+get_url_settings() {
+    local group="$1"
+    local index="$2"
+    local config_file_path="$3"
+    local -n result_array=$4
+
+    while IFS="=" read -r key value; do
+        result_array["$key"]="$value"
+        log_message "DEBUG" "$key=$value" "$LINENO"
+    done < <(jq -r ".urls[\"$group\"][$index] | to_entries | map(\"\\(.key)=\\(.value)\") | .[]" "$config_file_path")
 }
 
 # Function: Show configuration file
@@ -697,6 +877,16 @@ show_config_file() {
 
 # Function: Initialize the configuration file
 init_config() {
+    # Ensure the directory for the configuration file exists
+    config_dir=$(dirname "$CONFIG_FILE")
+    if [ ! -d "$config_dir" ]; then
+        printf "Configuration file directory %s does not exist. Creating it...\n" "$config_dir"
+        mkdir -p "$config_dir" || {
+            log_message "FATAL" "Failed to create directory: $config_dir" "$LINENO"
+            exit 1
+        }
+    fi
+
     # Check if the configuration file already exists
     if [ -f "$CONFIG_FILE" ]; then
         if [ "$INIT_FORCE" = true ]; then
@@ -722,37 +912,43 @@ init_config() {
     # Create the configuration content
     config_content=$(
         cat <<EOF
-# $APP_NAME Configuration File
-# This file contains the settings for the $APP_NAME application.
-
-# General Settings
-CACHE_DIR="$CACHE_DIR"
-LOG_FILE="$LOG_FILE"
-CONFIG_FILE="$CONFIG_FILE"
-
-# Monitoring Settings (in minutes)
-CHECK_INTERVAL=$CHECK_INTERVAL
-
-# Timeout interval (in seconds)
-TIMEOUT=$TIMEOUT
-
-# Notification Settings
-SYSTEM_NAME="$SYSTEM_NAME"
-PUSHOVER_NOTIFICATION=$PUSHOVER_NOTIFICATION
-PUSHOVER_USER_KEY="$PUSHOVER_USER_KEY"
-PUSHOVER_API_TOKEN="$PUSHOVER_API_TOKEN"
-DESKTOP_NOTIFICATION=$DESKTOP_NOTIFICATION
-
-# Logging Settings
-VERBOSE=$VERBOSE
-LOG_LEVEL="$LOG_LEVEL"
-
-# URL file
-URL_FILE="$URL_FILE"
-
-# Threshold Percentage Setting
-THRESHOLD=$THRESHOLD
-
+{
+	"configuration": {
+		"CACHE_DIR": "$CACHE_DIR",
+		"LOG_FILE": "$LOG_FILE",
+		"CHECK_INTERVAL": "$CHECK_INTERVAL",
+		"TIMEOUT": "$TIMEOUT",
+		"SYSTEM_NAME": "$SYSTEM_NAME",
+		"PUSHOVER_NOTIFICATION": "$PUSHOVER_NOTIFICATION",
+		"PUSHOVER_USER_KEY": "$PUSHOVER_USER_KEY",
+		"PUSHOVER_API_TOKEN": "$PUSHOVER_API_TOKEN",
+		"DESKTOP_NOTIFICATION": "$DESKTOP_NOTIFICATION",
+		"VERBOSE": "$VERBOSE",
+		"LOG_LEVEL": "$LOG_LEVEL",
+		"URL_FILE": "$URL_FILE",
+		"THRESHOLD": "$THRESHOLD"
+    },
+	"urls": {
+		"default": [
+			{
+				"NAME": "Apple Newsroom",
+				"URL": "https://www.apple.com/newsroom/",
+				"TIMEOUT": "5s",
+				"THRESHOLD": "1",
+				"UPDATED_CMD": "",
+                "CMD_TIMEOUT": "5s"
+			},
+			{
+				"NAME": "9to5mac Homepage",
+				"URL": "https://9to5mac.com",
+				"TIMEOUT": "10s",
+				"THRESHOLD": "15",
+				"UPDATED_CMD": "",
+                "CMD_TIMEOUT": "5s"
+			}
+		]
+	}
+}
 EOF
     )
 
@@ -768,17 +964,20 @@ EOF
 
 # Function: Show configuration information
 show_config() {
-    [ -n "$CACHE_DIR" ] && log_message "INFO" "Cache directory: $CACHE_DIR" "$LINENO"
-    [ -n "$LOG_FILE" ] && log_message "INFO" "Log file: $LOG_FILE" "$LINENO"
-    [ -n "$LOG_LEVEL" ] && log_message "INFO" "Log Level: $LOG_LEVEL" "$LINENO"
-    [ -n "$VERBOSE" ] && log_message "INFO" "Verbose enabled: $VERBOSE" "$LINENO"
-    [ -n "$CONFIG_FILE" ] && log_message "INFO" "Configuration file: $CONFIG_FILE" "$LINENO"
-    [ -n "$SYSTEM_NAME" ] && log_message "INFO" "System Name: $SYSTEM_NAME" "$LINENO"
-    [ -n "$PUSHOVER_NOTIFICATION" ] && log_message "INFO" "Pushover enabled: $PUSHOVER_NOTIFICATION" "$LINENO"
-    [ -n "$DESKTOP_NOTIFICATION" ] && log_message "INFO" "Desktop notification enabled: $DESKTOP_NOTIFICATION" "$LINENO"
-    [ -n "$CHECK_INTERVAL" ] && log_message "INFO" "Check interval: $CHECK_INTERVAL min(s)" "$LINENO"
-    [ -n "$TIMEOUT" ] && log_message "INFO" "Timeout interval: $TIMEOUT sec(s)" "$LINENO"
-    [ -n "$URL_FILE" ] && log_message "INFO" "URL file: $URL_FILE" "$LINENO"
+    log_message "INFO" "Configuration file: $CONFIG_FILE" "$LINENO"
+    log_message "INFO" "Cache directory: $CACHE_DIR" "$LINENO"
+    log_message "INFO" "Log file: $LOG_FILE" "$LINENO"
+    log_message "INFO" "PID file: $PID_FILE" "$LINENO"
+    log_message "INFO" "Log Level: $LOG_LEVEL" "$LINENO"
+    log_message "INFO" "Verbose enabled: $VERBOSE" "$LINENO"
+    log_message "INFO" "System Name: $SYSTEM_NAME" "$LINENO"
+    log_message "INFO" "Pushover enabled: $PUSHOVER_NOTIFICATION" "$LINENO"
+    log_message "INFO" "Desktop notification enabled: $DESKTOP_NOTIFICATION" "$LINENO"
+    log_message "INFO" "Check interval: $CHECK_INTERVAL" "$LINENO"
+    log_message "INFO" "Timeout interval: $TIMEOUT" "$LINENO"
+    log_message "INFO" "Repeat times: ${REPEAT:-0}" "$LINENO"
+    log_message "INFO" "URL file: $URL_FILE" "$LINENO"
+    log_message "INFO" "Threshold for changes: $THRESHOLD" "$LINENO"
 }
 
 # ==============================
@@ -801,11 +1000,12 @@ show_help() {
     printf "  -f, --force-init            Force initialize of the configuration file if one exists.\n"
     printf "  -S, --show-config           Show the configuration settings.\n"
     printf "  -e, --show-config-file      Show the configuration file.\n"
+    printf "  -E, --edit-config           Edit the configuration file.\n"
 
     # Cache Management
     printf "\nCache Management:\n"
     printf "  -x, --clean                 Delete all cached files.\n"
-    printf "  -C, --cache-dir  <path>     Specify a custom cache directory (default: %s).\n" "$CACHE_DIR}"
+    printf "  -C, --cache-dir  <path>     Specify a custom cache directory (default: %s).\n" "${CACHE_DIR}"
 
     # Notification Options
     printf "\nNotification Options:\n"
@@ -817,22 +1017,18 @@ show_help() {
 
     # Logging and Output
     printf "\nLogging and Output:\n"
-    printf "  -v, --verbose             Enable verbose output.\n"
-    printf "  -l, --log                 Log the log file to the screen.\n"
-    printf "  -o, --output <file>       Specify a custom log file location (default: %s).\n" "${LOG_FILE}"
-    printf "  -L, --log-level <level>   Set the log level (FATAL, ERROR, WARN, INFO, DEBUG).\n"
-
-    # URL Management
-    printf "\nURL Management:\n"
-    printf "  -f, --url-file <file>     Specify a file containing a list of URLs to monitor. (default: %s)\n" "$URL_FILE"
-    printf "  -U, --list-urls           List all watched URLs.\n"
-    printf "  -C, --clean               Delete all cached files.\n"
+    printf "  -v, --verbose               Enable verbose output.\n"
+    printf "  -l, --log                   Log the log file to the screen.\n"
+    printf "  -o, --output <file>         Specify a custom log file location (default: %s).\n" "${LOG_FILE}"
+    printf "  -L, --log-level <level>     Set the log level (FATAL, ERROR, WARN, INFO, DEBUG).\n"
 
     # Remote Connection Configuration
     printf "\nRemote Connection Configuration:\n"
-    printf "  -I, --interval <seconds>    Set the interval between checks (default: %d seconds).\n" "${CHECK_INTERVAL}"
-    printf "  -T, --timeout <seconds>     Set the connection timeout for remote connections (default: %d seconds).\n" "${TIMEOUT}"
-    printf "  -H, --threshold <percentage> Set the threshold percentage for detecting changes. Higher values mean fewer notifications for minor changes. (default: %d%%)\n" "$THRESHOLD"
+    printf "  -I, --interval <s,m,h,d>    Set the interval between checks (default: %s).\n" "${CHECK_INTERVAL}"
+    printf "  -T, --timeout <s,m,h,d>     Set the connection timeout for remote connections (default: %s).\n" "${TIMEOUT}"
+    printf "  -N, --repeat <number>       Repeat the checks in interactive mode N number of times and exit (default: %s).\n" "${REPEAT:-0}"
+    printf "  -H, --threshold <percentage> Set the default threshold percentage for detecting changes. Higher values mean fewer notifications for minor changes. (default: %d%%)\n" "$THRESHOLD"
+    printf "  -U, --list-urls             List all watched URLs.\n"
 
     # Process Management Functions
     printf "\nProcess Management:\n"
@@ -858,96 +1054,118 @@ show_help() {
     printf "  Start the service with default URL file:\n"
     printf "    %s --start\n" "$(basename "$0")"
     printf "\n"
+    printf "  Restart the service with default settings:\n"
+    printf "    %s --restart\n" "$(basename "$0")"
+    printf "\n"
     printf "  Check service status:\n"
     printf "    %s --status\n" "$(basename "$0")"
     printf "\n"
     printf "  Stop the service:\n"
     printf "    %s --stop\n" "$(basename "$0")"
     printf "\n"
-
-    show_version
-    exit 0
 }
 
 # ==============================
 # Argument Processing Functions
 # ==============================
 
-# Function: Parse command-line arguments
-parse_arguments() {
+# Function: Parse command-line arguments and setup environment
+parse_cli_options() {
+
+    # Default configuration file locations
+    CONFIG_FILE="$(get_config_path "$CONFIG_FILE_NAME")"
+    CACHE_DIR="$(get_temp_path "$CACHE_DIR")"
+    LOG_FILE="$(normalize_path "$CACHE_DIR/$LOG_FILE_NAME")"
+
+    # Set default hostname
+    SYSTEM_NAME="$(get_hostname)"
+
+    # Process high priority items first
+    [[ " $@ " =~ " --help " || " $@ " =~ " -h " ]] && show_help && show_version && exit 0
+    [[ " $@ " =~ " --version " || " $@ " =~ " -V " ]] && show_version && exit 0
+
+    # Check for log level and verbose and process so they are available early
+    if [[ " $@ " =~ " --log-level " || " $@ " =~ " -L " ]]; then
+        for ((i = 1; i <= $#; i++)); do
+            case "${!i}" in
+            --log-level | -L)
+                next=$((i + 1))
+                if [[ -z "${!next}" || "${!next}" == -* ]]; then
+                    printf "Error: %s requires a value\n" "${!i}" >&2
+                    exit 1
+                fi
+                # Check if the log level exists in the LOG_LEVELS_MAP array
+                if [[ -n "${LOG_LEVELS_MAP[${!next}]}" ]]; then
+                    LOG_LEVEL="${!next}"
+                    SKIP_CONFIG_KEYS+=("LOG_LEVEL")
+                else
+                    printf "Error: %s requires a valid value. Available levels are: %s\n" "${!i}" "${!LOG_LEVELS_MAP[*]}" >&2
+                    exit 1
+                fi
+                # Remove the processed options from the arguments list
+                set -- "${@:1:$((i - 1))}" "${@:((i + 2))}"
+                i=$((i - 1))
+                ;;
+            --verbose | -v)
+                VERBOSE=true
+                SKIP_CONFIG_KEYS+=("VERBOSE")
+                # Remove the processed options from the arguments list
+                set -- "${@:1:$((i - 1))}" "${@:((i + 1))}"
+                i=$((i - 1))
+                ;;
+            esac
+        done
+    fi
+
+    # Process remaining options
     local options_processed=false
     while [[ $# -gt 0 ]]; do
         case "$1" in
-        # General Options
-        --help | -h)
-            SHOW_HELP=true
-            ;;
-        --version | -V)
-            show_version
-            exit 0
-            ;;
-
         # Configuration and Initialization
         --config | -c)
             if [[ -z "$2" || "$2" == -* ]]; then
                 printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
-            elif [[ ! -f "$2" ]]; then
-                printf "Error: Config file not found: %s\n" "$2" >&2
-                exit 1
             fi
-            CONFIG_FILE="$2"
-            CLI_CONFIG_FILE=true
-            shift
+            CONFIG_FILE="$(normalize_path "$2")"
+            SKIP_CONFIG_KEYS+=("CONFIG_FILE")
+            shift 2
             ;;
         --init | -i)
             INIT=true
+            shift
             ;;
         --force-init | -f)
             INIT_FORCE=true
+            shift
             ;;
         --show-config | -S)
             SHOW_CONFIG=true
+            shift
             ;;
         --show-config-file | -e)
             SHOW_CONFIG_FILE=true
-            ;;
-
-        # URL Management
-        --url-file | -f)
-            if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --url-file requires a value\n"
-                exit 1
-            elif [[ ! -f "$2" ]]; then
-                printf "Error: URL file not found: %s\n" "$2"
-                exit 1
-            fi
-            CLI_URL_FILE="$2"
             shift
             ;;
-        --list-urls | -U)
-            SHOW_URL=true
-            ;;
-        --threshold | -H)
-            if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: --threshold requires a value\n"
-                exit 1
-            fi
-            CLI_THRESHOLD="$2"
+        --edit-config | -E)
+            EDIT_CONFIG_FILE=true
             shift
             ;;
 
         # Cache Management
         --clean | -x)
             CLEAN=true
+            shift
             ;;
         --cache-dir | -C)
             if [[ -z "$2" || "$2" == -* ]]; then
                 printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             fi
-            CLI_CACHE_DIR="$2"
-            shift
+            CACHE_DIR="$(normalize_path "$2")"
+            LOG_FILE="$(normalize_path "$2/$LOG_FILE_NAME")"
+            SKIP_CONFIG_KEYS+=("CACHE_DIR")
+            shift 2
             ;;
 
         # Notification Options
@@ -956,60 +1174,52 @@ parse_arguments() {
                 printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             fi
-            CLI_SYSTEM_NAME="$2"
-            shift
+            SYSTEM_NAME="$2"
+            SKIP_CONFIG_KEYS+=("SYSTEM_NAME")
+            shift 2
             ;;
         --pushover | -p)
-            CLI_PUSHOVER_NOTIFICATION=true
+            PUSHOVER_NOTIFICATION=true
+            SKIP_CONFIG_KEYS+=("PUSHOVER_NOTIFICATION")
+            shift
             ;;
         --user-key | -u)
             if [[ -z "$2" || "$2" == -* ]]; then
                 printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             fi
-            CLI_PUSHOVER_USER_KEY="$2"
-            shift
+            PUSHOVER_USER_KEY="$2"
+            SKIP_CONFIG_KEYS+=("PUSHOVER_USER_KEY")
+            shift 2
             ;;
         --api-token | -a)
             if [[ -z "$2" || "$2" == -* ]]; then
                 printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             fi
-            CLI_PUSHOVER_API_TOKEN="$2"
-            shift
+            PUSHOVER_API_TOKEN="$2"
+            SKIP_CONFIG_KEYS+=("PUSHOVER_API_TOKEN")
+            shift 2
             ;;
         --desktop | -d)
-            CLI_DESKTOP_NOTIFICATION=true
+            DESKTOP_NOTIFICATION=true
+            SKIP_CONFIG_KEYS+=("DESKTOP_NOTIFICATION")
+            shift
             ;;
 
         # Logging and Output
-        --verbose | -v)
-            CLI_VERBOSE=true
-            ;;
         --log | -l)
             SHOW_LOG=true
+            shift
             ;;
         --output | -o)
             if [[ -z "$2" || "$2" == -* ]]; then
                 printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             fi
-            CLI_LOG_FILE="$2"
-            shift
-            ;;
-        --log-level | -L)
-            if [[ -z "$2" || "$2" == -* ]]; then
-                printf "Error: %s requires a value\n" "$1" >&2
-                exit 1
-            fi
-            # Check if the log level exists in the LOG_LEVELS_MAP array
-            if [[ -n "${LOG_LEVELS_MAP[$2]}" ]]; then
-                CLI_LOG_LEVEL="$2"
-                shift
-            else
-                printf "Error: %s requires a valid value. Available levels are: %s\n" "$1" "${!LOG_LEVELS_MAP[*]}" >&2
-                exit 1
-            fi
+            LOG_FILE="$(normalize_path "$2")"
+            SKIP_CONFIG_KEYS+=("LOG_FILE")
+            shift 2
             ;;
 
         # Remote Connection Configuration
@@ -1018,10 +1228,20 @@ parse_arguments() {
                 printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
             fi
-            CLI_CHECK_INTERVAL="$2"
-            shift
+            CHECK_INTERVAL="$2"
+            SKIP_CONFIG_KEYS+=("CHECK_INTERVAL")
+            shift 2
             ;;
         --timeout | -T)
+            if [[ -z "$2" || "$2" == -* ]]; then
+                printf "Error: %s requires a value\n" "$1" >&2
+                exit 1
+            fi
+            TIMEOUT="$2"
+            SKIP_CONFIG_KEYS+=("TIMEOUT")
+            shift 2
+            ;;
+        --repeat | -N)
             if [[ -z "$2" || "$2" == -* ]]; then
                 printf "Error: %s requires a value\n" "$1" >&2
                 exit 1
@@ -1030,150 +1250,135 @@ parse_arguments() {
                 printf "Error: Timeout must be an integer\n" >&2
                 exit 1
             fi
-            CLI_TIMEOUT="$2"
+            REPEAT="$2"
+            SKIP_CONFIG_KEYS+=("REPEAT")
+            shift 2
+            ;;
+        --list-urls | -U)
+            SHOW_URLS=true
             shift
+            ;;
+        --threshold | -H)
+            if [[ -z "$2" || "$2" == -* ]]; then
+                printf "Error: --threshold requires a value\n"
+                exit 1
+            fi
+            THRESHOLD="$2"
+            SKIP_CONFIG_KEYS+=("THRESHOLD")
+            shift 2
             ;;
 
         # Process Management
         --start | -s)
             START_SERVICE=true
+            shift
             ;;
         --stop | -k)
             STOP_SERVICE=true
+            shift
             ;;
         --restart | -r)
             RESTART_SERVICE=true
+            shift
             ;;
         --status | -t)
             SHOW_STATUS=true
+            shift
             ;;
 
         # End of Options
         --)
             options_processed=true
             shift
+            break
             ;;
-        # All remaining input is invalid
+
+            # All remaining input is invalid
         -*)
             printf "Error: Unknown option: %s\n" "$1" >&2
             exit 1
             ;;
-        # All remaining input is URLs
         *)
             if [[ "$1" == -* ]]; then
                 printf "Error: Unknown option: %s\n" "$1" >&2
                 exit 1
             fi
-            URLS+=("$1")
+            CLI_URLS+=("$1")
+            shift
             ;;
         esac
-        shift
     done
-}
 
-# Function: Process and execute actions based on parsed arguments
-process_arguments() {
-
-    # Default configuration file location
-    [[ "$CLI_CONFIG_FILE" = false ]] && CONFIG_FILE="$(get_config_path "$CONFIG_FILE")"
-    CACHE_DIR="$(get_temp_path "$CACHE_DIR")"
-    LOG_FILE="$CACHE_DIR/$LOG_FILE"
-    PID_FILE="$CACHE_DIR/$PID_FILE"
-    URL_FILE="$(get_config_path "$URL_FILE")"
-
-    # Set default hostname
-    SYSTEM_NAME="$(get_hostname)"
-
-    # Show help and exit
-    [[ "$SHOW_HELP" = true ]] && show_help
-
-    # Override config settings with command line options
-    if [[ -z "$INIT" || "$INIT" = false ]]; then
-        load_config "$CONFIG_FILE"
-    fi
-    [[ -n "$CLI_VERBOSE" ]] && VERBOSE="$CLI_VERBOSE"
-    [[ -n "$CLI_CACHE_DIR" ]] && CACHE_DIR="$CLI_CACHE_DIR"
-
+    # Check for cache critical path
     if is_critical_directory "$CACHE_DIR"; then
         log_message "FATAL" "Attempted to set cache path to a critical directory '$CACHE_DIR'. Aborting." "$LINENO"
         exit 1
     fi
 
+    # Delete the cache directory and exit
     [[ "$CLEAN" = true ]] && delete_cache
-    init_cache
 
-    [[ -n "$CLI_LOG_FILE" ]] && LOG_FILE="$CLI_LOG_FILE"
-    [[ -n "$CLI_LOG_LEVEL" ]] && LOG_LEVEL="$CLI_LOG_LEVEL"
+    # Initialize the default configuration file and exit
+    [[ -z "$INIT" || "$INIT" = false ]] && load_config "$CONFIG_FILE"
+    [[ "$INIT" = true ]] && init_config
+    init_cache
     init_log
 
+    # Set the PID file based on final CACHE_DIR
+    PID_FILE="$(normalize_path "$CACHE_DIR/$PID_FILE_NAME")"
+
+    # Process final commands after configuration is completely finalized
+    [[ "$EDIT_CONFIG_FILE" = true ]] && edit_file "$CONFIG_FILE"
     [[ "$SHOW_LOG" = true ]] && show_log
-    [[ -n "$CLI_SYSTEM_NAME" ]] && SYSTEM_NAME="$CLI_SYSTEM_NAME"
-    [[ -n "$CLI_PUSHOVER_NOTIFICATION" ]] && PUSHOVER_NOTIFICATION="$CLI_PUSHOVER_NOTIFICATION"
-    [[ -n "$CLI_PUSHOVER_USER_KEY" ]] && PUSHOVER_USER_KEY="$CLI_PUSHOVER_USER_KEY"
-    [[ -n "$CLI_PUSHOVER_API_TOKEN" ]] && PUSHOVER_API_TOKEN="$CLI_PUSHOVER_API_TOKEN"
-    [[ -n "$CLI_DESKTOP_NOTIFICATION" ]] && DESKTOP_NOTIFICATION="$CLI_DESKTOP_NOTIFICATION"
-    [[ -n "$CLI_CHECK_INTERVAL" ]] && CHECK_INTERVAL="$CLI_CHECK_INTERVAL"
-    [[ -n "$CLI_TIMEOUT" ]] && TIMEOUT="$CLI_TIMEOUT"
-    [[ -n "$CLI_THRESHOLD" ]] && THRESHOLD="$CLI_THRESHOLD"
     [[ "$SHOW_CONFIG_FILE" = true ]] && show_config_file
+
+    # Run a final processing of arguments
+    process_arguments
+}
+
+# Function: Process and execute actions based on parsed arguments
+process_arguments() {
+    # Show URLs and exit
+    [[ "$SHOW_URLS" = true ]] && show_urls && exit 0
+
+    # Keep this last so we show the final configuration state
     [[ "$SHOW_CONFIG" = true ]] && show_config && show_version && exit
-    [[ "$INIT" = true ]] && init_config
-
-    # Override URL settings with command line options
-    [[ -n "$CLI_URL_FILE" ]] && URL_FILE="$CLI_URL_FILE"
-    process_urls
-
-    # Check if the array is empty
-    if [[ ! $SHOW_STATUS && ! $SHOW_STOP && ${#URLS[@]} -eq 0 ]]; then
-        log_message "ERROR" "Error: No URLS have been provided." "$LINENO"
-        exit 1
-    fi
-
-    [[ "$SHOW_URL" = true ]] && show_urls && exit 0
 }
 
 # ==============================
-# URL Processing Functions
+# Application Functions
 # ==============================
-
-# Function: Process URLs from a file
-process_url_file() {
-    local file=$1
-    if [ ! -f "$file" ]; then
-        log_message "FATAL" "URL file not found: $file" "$LINENO"
-        exit 1
-    fi
-    while IFS= read -r URL; do
-        URLS+=("$URL")
-    done <"$file"
-}
-
-# Function: Process URLs
-process_urls() {
-    if [ ${#URLS[@]} -eq 0 ]; then
-        if [ -n "$URL_FILE" ]; then
-            process_url_file "$URL_FILE"
-        elif [[ "$SHOW_CONFIG" = false && "$SHOW_CONFIG_FILE" = false ]]; then
-            log_message "INFO" "Usage: $(basename "$0") <website_url>... [options]" "$LINENO"
-            log_message "INFO" "Try '$(basename "$0") --help' for more information." "$LINENO"
-            exit 1
-        fi
-    fi
-}
 
 # Function: Show URL configuration file
 show_urls() {
-    log_message "INFO" "" "$LINENO"
-    log_message "INFO" "Monitoring the following URLs:" "$LINENO"
-    for URL in "${URLS[@]}"; do
-        log_message "INFO" "- $URL" "$LINENO"
+    log_message "INFO" "Configured URLs:" "$LINENO"
+
+    # Get the connection groups
+    local groups=($(get_connection_groups "$CONFIG_FILE"))
+
+    # Check if groups array is empty or null
+    if [[ ${#groups[@]} -eq 0 ]]; then
+        log_message "FATAL" "No connection groups found in the configuration file." "$LINENO"
+        exit 1
+    fi
+
+    # Process the remaining groups
+    for group in "${groups[@]}"; do
+        log_message "INFO" "Group: $group" "$LINENO"
+        urls=$(jq -r ".urls[\"$group\"] | length" "$CONFIG_FILE")
+        for ((i = 0; i < urls; i++)); do
+            local -A url_result
+            get_url_settings "$group" "$i" "$CONFIG_FILE" url_result
+            log_message "INFO" "- Name: ${url_result["NAME"]}" "$LINENO"
+            log_message "INFO" "- URL: ${url_result["URL"]}" "$LINENO"
+            log_message "INFO" "- Threshold: ${url_result["THRESHOLD"]}" "$LINENO"
+            log_message "INFO" "- Timeout: ${url_result["TIMEOUT"]}" "$LINENO"
+            log_message "INFO" "- Updated Command: ${url_result["UPDATED_CMD"]}" "$LINENO"
+        done
     done
+
     log_message "INFO" "" "$LINENO"
 }
-
-# ==============================
-# Content Normalization and Website Checking Functions
-# ==============================
 
 # Function: Normalize HTML content
 normalize_content() {
@@ -1218,7 +1423,7 @@ normalize_content() {
 
     # Replace the original file with the normalized content
     mv "$temp_file" "$file"
-    log_message "DEBUG" "- Content normalized successfully: $file" "$LINENO"
+    log_message "DEBUG" "Content normalized successfully: $file" "$LINENO"
     return 0
 }
 
@@ -1228,9 +1433,9 @@ calculate_change_percentage() {
     local new_file=$2
 
     # Basic logging
-    log_message "DEBUG" "- Calculating change percentage" "$LINENO"
-    log_message "DEBUG" "- Previous file: $previous_file" "$LINENO"
-    log_message "DEBUG" "- New file: $new_file" "$LINENO"
+    log_message "DEBUG" "Calculating change percentage" "$LINENO"
+    log_message "DEBUG" "Previous file: $previous_file" "$LINENO"
+    log_message "DEBUG" "New file: $new_file" "$LINENO"
 
     # Calculate the number of lines in the previous file
     if [ ! -f "$previous_file" ] || [ ! -f "$new_file" ]; then
@@ -1242,18 +1447,18 @@ calculate_change_percentage() {
     local previous_lines=$(wc -l <"$previous_file" | xargs)
     local new_lines=$(wc -l <"$new_file" | xargs)
 
-    log_message "DEBUG" "- Previous lines: $previous_lines" "$LINENO"
-    log_message "DEBUG" "- New lines: $new_lines" "$LINENO"
+    log_message "DEBUG" "Previous lines: $previous_lines" "$LINENO"
+    log_message "DEBUG" "New lines: $new_lines" "$LINENO"
 
     if [ "$previous_lines" -eq 0 ] && [ "$new_lines" -eq 0 ]; then
-        log_message "INFO" "- Both files are empty. Assuming no change." "$LINENO"
+        log_message "INFO" "Both files are empty. Assuming no change." "$LINENO"
         echo 0
         return 0
     fi
 
     # Handle empty previous file
     if [ "$previous_lines" -eq 0 ]; then
-        log_message "WARN" "- Previous file is empty. Assuming 100% change." "$LINENO"
+        log_message "WARN" "Previous file is empty. Assuming 100% change." "$LINENO"
         echo 100
         return 0
     fi
@@ -1263,8 +1468,8 @@ calculate_change_percentage() {
 
     # Calculate change percentage
     local change_percentage=$(awk "BEGIN {printf \"%.2f\", ($differing_lines / $previous_lines) * 100}" | xargs)
-    log_message "DEBUG" "- Differing lines: $differing_lines" "$LINENO"
-    log_message "DEBUG" "- Change percentage: $change_percentage%" "$LINENO"
+    log_message "DEBUG" "Differing lines: $differing_lines" "$LINENO"
+    log_message "DEBUG" "Change percentage: $change_percentage%" "$LINENO"
 
     # Debug: Save the diff output for inspection
     diff "$previous_file" "$new_file" >"$CACHE_DIR/diff_debug.txt"
@@ -1275,73 +1480,100 @@ calculate_change_percentage() {
 
 # Function: Check the website for changes
 check_website() {
-    local website_url=$1
-    local prefixed_threshold=$(echo "$website_url" | awk -F'[][]' '{print $2}')
-    local applied_threshold=${prefixed_threshold:-$THRESHOLD}
-    local clean_url=$(echo "$website_url" | sed 's/^\[[0-9]*\]//')
-    local encoded_url=$(echo -n "$clean_url" | shasum | awk '{print $1}')
+    local -n url_settings=$1
+    local group=${url_settings["GROUP"]}
+    local name=${url_settings["NAME"]:-${url_settings["URL"]}}
+    local website_url=${url_settings["URL"]}
+    local timeout=$(get_interval_in_seconds "${url_settings["TIMEOUT"]:-$TIMEOUT}")
+    local timeout_duration=$(get_interval_in_seconds "${url_settings["CMD_TIMEOUT"]:-"10s"}")
+    local threshold=${url_settings["THRESHOLD"]:-$THRESHOLD}
+    local encoded_url=$(echo -n "$website_url" | shasum | awk '{print $1}')
     local previous_file="$CACHE_DIR/previous_content_$encoded_url.txt"
     local current_file="$CACHE_DIR/current_content_$encoded_url.txt"
     local normalized_file="$CACHE_DIR/normalized_content_$encoded_url.txt"
     local hash_file="$CACHE_DIR/hash_$encoded_url.txt"
 
-    log_message "DEBUG" "" "$LINENO"
-    log_message "DEBUG" "$SYSTEM_NAME Checking URL: $clean_url" "$LINENO"
-    log_message "DEBUG" "- Submitted URL: $website_url" "$LINENO"
-    log_message "DEBUG" "- Global threshold: $THRESHOLD%" "$LINENO"
-    log_message "DEBUG" "- Override threshold ${prefixed_threshold:-0}%" "$LINENO"
-    log_message "DEBUG" "- Applied threshold: $applied_threshold%" "$LINENO"
+    log_message "DEBUG" "$SYSTEM_NAME Checking URL:" "$LINENO"
+    log_message "DEBUG" "Submitted URL: $website_url" "$LINENO"
+    log_message "DEBUG" "Global threshold: $THRESHOLD%" "$LINENO"
+    log_message "DEBUG" "Applied threshold: $threshold%" "$LINENO"
 
     # Fetch the current content of the website
-    if ! curl -s -f --max-time "$TIMEOUT" "$clean_url" >"$current_file"; then
-        log_message "ERROR" "- Failed to fetch: $clean_url" "$LINENO"
+    if ! curl -s -f --max-time "$timeout" "$website_url" >"$current_file"; then
+        log_message "ERROR" "Failed to fetch: $website_url" "$LINENO"
         return 1
     fi
 
     # Normalize the content
     if ! normalize_content "$current_file"; then
-        log_message "ERROR" "- Failed to normalize content for: $clean_url" "$LINENO"
+        log_message "ERROR" "Failed to normalize content for: $website_url" "$LINENO"
         return 1
     fi
     cp "$current_file" "$normalized_file"
 
     # Check if normalized file is empty
     if [ ! -s "$normalized_file" ]; then
-        log_message "WARN" "- Normalized content for $clean_url is empty. Skipping further checks." "$LINENO"
+        log_message "WARN" "Normalized content for $website_url is empty. Skipping further checks." "$LINENO"
         return 1
     fi
 
     # Generate hash of the normalized content
     local current_hash=$(shasum -a 256 "$normalized_file" | awk '{print $1}')
+    url_settings["CURRENT_HASH"]="$current_hash"
 
     # Check for previous hash
     if [ -f "$hash_file" ]; then
         local previous_hash=$(cat "$hash_file")
+        url_settings["PREVIOUS_HASH"]="$previous_hash"
 
         # Compare hashes
         if [ "$current_hash" != "$previous_hash" ]; then
             if [ -f "$previous_file" ]; then
                 local change_percent=$(calculate_change_percentage "$previous_file" "$normalized_file")
+                url_settings["CHANGED_PERCENT"]="$change_percent"
 
                 # Notify if changes exceed threshold
-                if [[ "$change_percent" =~ ^[0-9.]+$ ]] && (($(echo "$change_percent >= $applied_threshold" | bc -l))); then
-                    local message="$SYSTEM_NAME: The website $clean_url has changed by $change_percent%!"
+                if [[ "$change_percent" =~ ^[0-9.]+$ ]] && (($(echo "$change_percent >= $threshold" | bc -l))); then
+                    local message="$SYSTEM_NAME: $name has changed by $change_percent%!"
                     log_message "WARN" "$message" "$LINENO"
-                    send_pushover_notification "NoirWatch Alert" "$message" "$clean_url"
+                    send_pushover_notification "NoirWatch Alert" "$message" "$website_url"
                     send_desktop_notification "NoirWatch Alert" "$message"
+                    updated_cmd=${url_settings["UPDATED_CMD"]}
+
+                    # run the configured status command
+                    if [[ -n "$updated_cmd" ]]; then
+                        if command -v "$updated_cmd" >/dev/null 2>&1; then
+                            log_message "DEBUG" "Running command: $updated_cmd" "$LINENO"
+
+                            # Serialize the associative array into a string
+                            local serialized_settings
+                            for key in "${!url_settings[@]}"; do
+                                serialized_settings+="$key=${url_settings[$key]};"
+                            done
+                            result=$(timeout "$timeout_duration" "$updated_cmd" "$serialized_settings" 2>&1)
+                            exit_code=$?
+                            if [[ $exit_code -ne 0 || -z "$result" ]]; then
+                                log_message "ERROR" "Command $updated_cmd failed with exit code $exit_code and result: $result" "$LINENO"
+                            else
+                                log_message "DEBUG" "Command $updated_cmd results: $result" "$LINENO"
+                            fi
+                        else
+                            log_message "ERROR" "Command $updated_cmd not found" "$LINENO"
+                        fi
+                    fi
                 else
-                    log_message "DEBUG" "- Changes are below the threshold: ($change_percent%)" "$LINENO"
+                    log_message "DEBUG" "Changes are below the threshold: ($change_percent%)" "$LINENO"
                 fi
             else
-                log_message "DEBUG" "- No previous content found for: $clean_url" "$LINENO"
-                log_message "DEBUG" "- Saving current content for future comparison." "$LINENO"
+                log_message "DEBUG" "No previous content found for: $name" "$LINENO"
+                log_message "DEBUG" "Saving current content for future comparison." "$LINENO"
             fi
         else
-            log_message "DEBUG" "- No changes detected for: $clean_url" "$LINENO"
+            log_message "DEBUG" "No changes detected for: $name" "$LINENO"
         fi
     else
-        log_message "DEBUG" "- No previous hash found for: $clean_url" "$LINENO"
-        log_message "DEBUG" "- Saving current content for future comparison." "$LINENO"
+        log_message "DEBUG" "No previous hash found for: $name" "$LINENO"
+        log_message "DEBUG" "Saving current content for future comparison." "$LINENO"
     fi
 
     # Save the current hash and normalized content if there's no change
@@ -1351,31 +1583,90 @@ check_website() {
 }
 
 # ==============================
-# Application Functions
+# Main Application Execution
 # ==============================
 
 # Function: Start the main process
 main() {
+    local repeat_count=0
+    local interval=$(get_interval_in_seconds "$CHECK_INTERVAL")
+
     while true; do
-        for URL in "${URLS[@]}"; do
-            check_website "$URL"
+        # Cross-platform timestamp handling
+        local current_time=$(date +%s) # Unix timestamp for calculations
+        local current_timestamp
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            current_timestamp=$(date -u "+%Y-%m-%dT%H:%M:%SZ")
+        else
+            current_timestamp=$(date -u "+%Y-%m-%dT%H:%M:%SZ")
+        fi
+
+        log_message "DEBUG" "Current timestamp: $current_timestamp" "$LINENO"
+
+        # Start of main application function calls
+
+        # If the URLs come from the CLI set the group to default
+        local groups=()
+        if [[ ${#CLI_URLS[@]} -gt 0 ]]; then
+            groups=("default")
+        else
+            # Get the connection groups
+            groups=($(get_connection_groups "$CONFIG_FILE"))
+        fi
+
+        # Check if groups array is empty or null
+        if [[ ${#groups[@]} -eq 0 ]]; then
+            log_message "FATAL" "No connection groups or urls found." "$LINENO"
+            exit 1
+        fi
+
+        # Process the remaining groups
+        for group in "${groups[@]}"; do
+            log_message "DEBUG" "Group: $group" "$LINENO"
+            local urls
+            if [ -n ${#CLI_URLS[@]} ] && [ ${#CLI_URLS[@]} -gt 0 ]; then
+                urls=("${CLI_URLS[@]}")
+            else
+                urls=($(jq -r ".urls[\"$group\"] | keys | .[]" "$CONFIG_FILE"))
+            fi
+            for ((i = 0; i < ${#urls[@]}; i++)); do
+                local -A url_result
+                if [[ ${#CLI_URLS[@]} -gt 0 ]]; then
+                    url_result["GROUP"]=$group
+                    local prefixed_threshold=$(echo "${urls[$i]}" | awk -F'[][]' '{print $2}')
+                    url_result["URL"]=$(echo "${urls[$i]}" | sed 's/^\[[0-9]*\]//')
+                    url_result["THRESHOLD"]=${prefixed_threshold:-$THRESHOLD}
+                else
+                    get_url_settings "$group" "$i" "$CONFIG_FILE" url_result
+                    url_result["GROUP"]=$group
+                fi
+
+                check_website url_result
+            done
         done
-        sleep $((CHECK_INTERVAL * 60))
+
+        # End of main application function calls
+
+        # Increment the repeat counter
+        repeat_count=$((repeat_count + 1))
+        log_message "DEBUG" "Iteration: $repeat_count" "$LINENO"
+
+        # Check if REPEAT is set and not zero
+        if [[ -z "$REPEAT" || "$REPEAT" != 0 ]] && [[ "$repeat_count" -ge "$REPEAT" ]]; then
+            log_message "DEBUG" "Reached the maximum number of repetitions: $REPEAT" "$LINENO"
+            break
+        else
+            log_message "DEBUG" "Sleeping for $CHECK_INTERVAL" "$LINENO"
+            sleep "$interval"
+        fi
     done
 }
 
-# ==============================
-# Main Application Execution
-# ==============================
-
-# Call the function to parse arguments
-parse_arguments "$@"
-
-# Call the function to process all the cli config options
-process_arguments
-
 # Call the function to check for required dependencies
 check_dependencies
+
+# Call the function to parse cli options
+parse_cli_options "$@"
 
 # Call the main function to start the process
 start_process

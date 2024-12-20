@@ -1,0 +1,36 @@
+{
+	"configuration": {
+		"CACHE_DIR": "./test/cache",
+		"LOG_FILE": "./test/cache/noirwatch.log",
+		"CHECK_INTERVAL": "60s",
+		"TIMEOUT": "5s",
+		"SYSTEM_NAME": "Test System",
+		"PUSHOVER_NOTIFICATION": "false",
+		"PUSHOVER_USER_KEY": "",
+		"PUSHOVER_API_TOKEN": "",
+		"DESKTOP_NOTIFICATION": "false",
+		"VERBOSE": "true",
+		"LOG_LEVEL": "DEBUG",
+		"THRESHOLD": "0"
+	},
+	"urls": {
+		"default": [
+			{
+				"NAME": "Apple Newsroom",
+				"URL": "https://www.apple.com/newsroom/",
+				"TIMEOUT": "5s",
+				"THRESHOLD": "1",
+				"UPDATED_CMD": "./test/test_cmd.sh",
+				"CMD_TIMEOUT": "5s"
+			},
+			{
+				"NAME": "9to5mac Homepage",
+				"URL": "https://9to5mac.com",
+				"TIMEOUT": "10s",
+				"THRESHOLD": "5",
+				"UPDATED_CMD": "./test/test_cmd.sh",
+				"CMD_TIMEOUT": "5s"
+			}
+		]
+	}
+}

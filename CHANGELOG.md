@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - none
 
+## [1.3.0] - 2024-12-20
+
+### Added
+
+- Command to edit configuration file
+- Repeat URL check N times and exit
+- Per-URL configuration via JSON configuration file
+- Run a custom command on change detection
+
+### Changed
+
+- Configuration is now in JSON format
+- Combined URL configuration with new JSON configuration format
+- Intervals are now available in seconds, minutes, hours
+- Dependencies now include timeout
+- Desktop notification default is now false
+- Reorganized code for maintainability and logic
+
+### Removed
+
+- Support for bash based configuration files
+- Separate URL file
+
+### Fixed
+
+- Console logging formatting errors
+- All paths are now normalized
+
 ## [1.2.1] - 2024-11-29
 
 ### Changed

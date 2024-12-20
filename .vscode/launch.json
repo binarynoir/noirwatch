@@ -9,7 +9,8 @@
 			"request": "launch",
 			"name": "Bash-Debug (simplest configuration)",
 			"program": "${file}",
-			"argsString": " -v -L DEBUG"
+			"argsString": " -v -L DEBUG -c test/test.json -N 1"
+			// "argsString": " -v -L DEBUG -c new_test/test.json -N 1 '[5]binarynoir.tech'"
 			// "argsString": "-L TRACE" // test invalid log level
 			// "argsString": "--clean" // test clean
 		}

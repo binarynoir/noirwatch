@@ -3,11 +3,10 @@
 # Test script for NoirWatch
 
 # Configuration files
-CONFIG_FILE="test_noirwatch.conf"
-AUTOMATED_CONFIG_FILE="test_noirwatch-autogen.conf"
-URL_FILE="test_urls.conf"
-LOG_FILE="noirwatch_test.log"
-CACHE_DIR="noirwatch_test_cache"
+CONFIG_FILE="./test/test.json"
+AUTOMATED_CONFIG_FILE="./test/test_automated.json"
+LOG_FILE="./test/test.log"
+CACHE_DIR="./test/cache"
 NOIRWATCH_SCRIPT="../noirwatch"  # Path to the NoirWatch script
 
 # Function to clean up the automated config file and other test artifacts
