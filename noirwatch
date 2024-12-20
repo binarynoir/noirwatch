@@ -7,7 +7,7 @@
 
 # App version and name
 APP_NAME="NoirWatch"
-VERSION=1.3.0
+VERSION=1.3.1
 LAST_UPDATED="2024-12-20"
 
 # TODO:
@@ -24,7 +24,7 @@ CLI_URLS=()
 THRESHOLD=0
 
 # Application specific dependencies
-DEPENDENCIES=("timeout" "xmllint")
+DEPENDENCIES=("shasum" "timeout" "xmllint")
 
 # ==============================
 # Base Application Variables
@@ -976,7 +976,6 @@ show_config() {
     log_message "INFO" "Check interval: $CHECK_INTERVAL" "$LINENO"
     log_message "INFO" "Timeout interval: $TIMEOUT" "$LINENO"
     log_message "INFO" "Repeat times: ${REPEAT:-0}" "$LINENO"
-    log_message "INFO" "URL file: $URL_FILE" "$LINENO"
     log_message "INFO" "Threshold for changes: $THRESHOLD" "$LINENO"
 }
 
@@ -1048,10 +1047,7 @@ show_help() {
     printf "  Start the service with URLS:\n"
     printf "    %s --start 'https://example.com'\n" "$(basename "$0")"
     printf "\n"
-    printf "  Start the service with URL file:\n"
-    printf "    %s --start --url-file '/path/to/file'\n" "$(basename "$0")"
-    printf "\n"
-    printf "  Start the service with default URL file:\n"
+    printf "  Start the service with default settings:\n"
     printf "    %s --start\n" "$(basename "$0")"
     printf "\n"
     printf "  Restart the service with default settings:\n"

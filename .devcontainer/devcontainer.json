@@ -20,7 +20,9 @@
 				"yzhang.markdown-all-in-one",
 				"christian-kohler.path-intellisense",
 				"esbenp.prettier-vscode",
-				"foxundermoon.shell-format"
+				"foxundermoon.shell-format",
+				"ms-azuretools.vscode-docker",
+				"Gruntfuggly.todo-tree"
 			]
 		}
 	}

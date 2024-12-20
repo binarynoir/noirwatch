@@ -34,6 +34,7 @@ NoirWatch monitors specified websites for changes and sends notifications. It su
 - Bash 4.0+
 - `curl` for fetching website content
 - `sed` for HTML content normalization
+- `shasum` for change comparisons
 - `timeout` for custom command files
 - `xmllint` for HTML content normalization
 - `powershell` for Windows desktop notifications
@@ -381,6 +382,37 @@ NoirWatch uses a configuration file to store default settings. The default locat
 - `-k, --stop`: Stop the AppName service.
 - `-r, --restart`: Restart the AppName service.
 - `-t, --status`: Check the current status of the AppName service.
+
+## Docker Deployment Instructions
+
+This guide provides step-by-step instructions to deploy the NoirWatch service using Docker.
+
+### Docker Prerequisites
+
+Ensure you have the following installed on your system:
+
+- Docker
+
+### Using the Dockerfile
+
+To download the `Dockerfile` from the GitHub repository, run the following command:
+
+```sh
+curl -O https://raw.githubusercontent.com/binarynoir/noirwatch/main/Dockerfile
+```
+
+### Build and Deploy
+
+Navigate to the directory containing the `Dockerfile` and run the following command to build and start the service:
+
+```sh
+docker build -t noirwatch-image .
+docker run -d --name noirwatch noirwatch-image
+```
+
+### Conclusion
+
+You have successfully deployed the NoirWatch service using Docker. The service will automatically start when the container is created and will restart if it stops unexpectedly. For any further modifications or assistance, feel free to ask!
 
 ## Instructions for Running the Tests
 
