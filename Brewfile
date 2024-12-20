@@ -1,7 +1,7 @@
 # Brewfile for NoirWatch project
 
 # Install bash
-brew install bash
+brew install bash coreutils
 
 # Custom script setup
 system "curl -o /usr/local/bin/noirwatch https://raw.githubusercontent.com/binarynoir/noirwatch/main/noirwatch"
