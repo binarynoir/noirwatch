@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - none
 
+## [1.3.2] - 2024-12-30
+
+### Fixed
+
+- Minor variable protections
+
 ## [1.3.1] - 2024-12-20
 
 ### Added
