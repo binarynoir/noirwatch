@@ -7,8 +7,8 @@
 
 # App version and name
 readonly APP_NAME="NoirWatch"
-readonly VERSION=1.3.2
-readonly LAST_UPDATED="2024-12-30"
+readonly VERSION=1.3.3
+readonly LAST_UPDATED="2025-01-01"
 
 # TODO:
 #  - Add more notification methods (email, slack, discord, etc.)
