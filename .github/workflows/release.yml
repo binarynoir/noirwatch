@@ -6,77 +6,74 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
   release:
     name: Release pushed tag
-    runs-on: ubuntu-22.04
+    needs: ci
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     env:
-      VERSION: "${{ github.ref_name }}" # Sets VERSION based on tag
+      APP: noirwatch
+      TAG: ${{ github.ref_name }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Check the tag matches the script version
+        run: |
+          script_version=$(grep -Eo '^(readonly )?VERSION=[0-9]+\.[0-9]+\.[0-9]+' "$APP" | cut -d= -f2)
+          if [[ "v$script_version" != "$TAG" ]]; then
+            echo "::error::Tag $TAG does not match VERSION=$script_version in $APP"
+            exit 1
+          fi
 
       - name: Create release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$tag" \
-              --repo="$GITHUB_REPOSITORY" \
-              --title="${GITHUB_REPOSITORY#*/} ${tag#v}" \
-              --generate-notes || exit 1
+          gh release create "$TAG" \
+            --repo="$GITHUB_REPOSITORY" \
+            --title="${GITHUB_REPOSITORY#*/} ${TAG#v}" \
+            --generate-notes
 
-      - name: Get release ID
-        id: get_release
+      - name: Calculate SHA-256 checksum of the source archive
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          release_id=$(gh release view "$tag" --json id --jq '.id') || exit 1
-          echo "release_id=$release_id" >> $GITHUB_ENV
-
-      - name: Download tarball
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          release_id: ${{ env.release_id }}
-        run: |
-          curl -L -H "Authorization: token $GITHUB_TOKEN" \
-          -H "Accept: application/vnd.github.v3.raw" \
-          -o "noirwatch-${{ env.VERSION }}.tar.gz" \
-          "https://github.com/binarynoir/noirwatch/archive/refs/tags/${{ env.VERSION }}.tar.gz" || exit 1
-
-      - name: Calculate SHA-256 checksum
-        id: calculate_sha
-        run: |
-          SHA256_SUM=$(sha256sum "noirwatch-${{ env.VERSION }}.tar.gz" | awk '{ print $1 }') || exit 1
-          echo "SHA256_SUM=$SHA256_SUM" >> $GITHUB_ENV
+          curl --fail --silent --show-error --location \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -o "$APP-$TAG.tar.gz" \
+            "https://github.com/$GITHUB_REPOSITORY/archive/refs/tags/$TAG.tar.gz"
+          echo "SHA256_SUM=$(sha256sum "$APP-$TAG.tar.gz" | awk '{ print $1 }')" >> "$GITHUB_ENV"
 
       - name: Checkout Homebrew repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: binarynoir/homebrew-noirwatch
           path: homebrew-noirwatch
-          persist-credentials: false
+          token: ${{ secrets.TARGET_REPO_PAT }}
 
-      - name: Set up Git credentials
+      - name: Update and push the Homebrew formula
+        working-directory: homebrew-noirwatch
         run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-
-      - name: Modify noirwatch.rb
-        env:
-          SHA256_SUM: ${{ env.SHA256_SUM }}
-        run: |
-          sed -i "s|url \".*\"|url \"https://github.com/binarynoir/noirwatch/archive/refs/tags/${{ env.VERSION }}.tar.gz\"|" homebrew-noirwatch/noirwatch.rb
-          sed -i "s|sha256 \".*\"|sha256 \"${{ env.SHA256_SUM }}\"|" homebrew-noirwatch/noirwatch.rb
-
-      - name: Commit and push changes
-        run: |
-          cd homebrew-noirwatch
-          git add noirwatch.rb
-          git commit -m "Update noirwatch.rb for version ${{ env.VERSION }}"
-          git push https://x-access-token:${{ secrets.TARGET_REPO_PAT }}@github.com/binarynoir/homebrew-noirwatch HEAD:main || exit 1
-        env:
-          TARGET_REPO_PAT: ${{ secrets.TARGET_REPO_PAT }}
+          if [[ ! -f "$APP.rb" ]]; then
+            echo "::warning::$APP.rb not found in homebrew-$APP; skipping the formula update"
+            exit 0
+          fi
+          sed -i "s|url \".*\"|url \"https://github.com/$GITHUB_REPOSITORY/archive/refs/tags/$TAG.tar.gz\"|" "$APP.rb"
+          sed -i "s|sha256 \".*\"|sha256 \"$SHA256_SUM\"|" "$APP.rb"
+          if git diff --quiet; then
+            echo "Formula already up to date"
+            exit 0
+          fi
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git commit -am "Update $APP.rb for version $TAG"
+          git push origin HEAD:main

@@ -1,4 +1,4 @@
-.TH NOIRWATCH 1 "January 1, 2025" "NoirWatch 1.3.3" "User Commands"
+.TH NOIRWATCH 1 "October 13, 2026" "NoirWatch 1.4.0" "User Commands"
 .SH NAME
 NoirWatch \- Monitor specified websites for changes and send notifications.
 .SH SYNOPSIS
@@ -16,7 +16,7 @@ Display this help message.
 Display the application version.
 .TP
 .B \-c, \--config <config_file>
-Specify a custom configuration file (default: ~/.config/noirwatch.conf).
+Specify a custom configuration file (default: ~/.config/noirwatch.json).
 .TP
 .B \-i, \--init
 Initialize the configuration file.
@@ -54,26 +54,32 @@ Specify the Pushover API token.
 .B \-d, \--desktop
 Enable desktop notifications.
 .TP
+.B \-v, \--verbose
+Enable verbose output.
+.TP
 .B \-l, \--log
 Show the log.
 .TP
 .B \-o, \--output <file>
 Specify the log file.
 .TP
-.B \-I, \--interval <seconds>
-Specify the check interval in seconds.
+.B \-L, \--log-level <level>
+Set the log level (FATAL, ERROR, WARN, INFO, DEBUG).
 .TP
-.B \-T, \--timeout <seconds>
-Specify the timeout duration in seconds.
+.B \-I, \--interval <s,m,h,d>
+Specify the interval between checks, such as 90s or 15m (default: 60s).
+.TP
+.B \-T, \--timeout <s,m,h,d>
+Specify the connection timeout (default: 5s).
 .TP
 .B \-N, \--repeat <count>
-Specify the number of times to repeat the check.
+Run the checks this many times, then exit (default: 0, which runs until stopped).
 .TP
 .B \-U, \--list-urls
 List the URLs being monitored.
 .TP
-.B \-H, \--threshold <value>
-Specify the threshold value.
+.B \-H, \--threshold <percentage>
+Set the change threshold percentage. Higher values mean fewer notifications for minor changes (default: 0).
 .TP
 .B \-s, \--start
 Start the monitoring service.
@@ -85,7 +91,20 @@ Stop the monitoring service.
 Restart the monitoring service.
 .TP
 .B \-t, \--status
-Show the status of the monitoring service.
+Show the status of the monitoring service. Exits with status 0 when it is running and 3 when it is stopped.
 .TP
 .B \-\-
 End of options.
+.SH EXIT STATUS
+0 on success, 1 on errors such as an invalid option or configuration, and 3 from \-\-status when the service is not running.
+.SH FILES
+.TP
+.I ~/.config/noirwatch.json
+Default configuration file. It can hold your Pushover keys, so \-\-init creates it readable only by you.
+.TP
+.I /tmp/noirwatch_cache
+Default cache directory, holding the saved page content, log file and PID file.
+.SH AUTHOR
+John Smith III
+.SH LICENSE
+MIT License

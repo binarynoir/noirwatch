@@ -31,12 +31,12 @@ NoirWatch monitors specified websites for changes and sends notifications. It su
 
 ## Requirements
 
-- Bash 4.0+
+- Bash 4.3+ (macOS ships Bash 3.2; install a newer one with `brew install bash`)
 - `curl` for fetching website content
-- `sed` for HTML content normalization
-- `shasum` for change comparisons
-- `timeout` for custom command files
-- `xmllint` for HTML content normalization
+- `jq` for reading the configuration file
+- `xmllint` (libxml2) for extracting the text of web pages
+- `diff`, `sed`, `shasum` and `timeout` for comparing content and running commands
+- GNU `realpath` on Linux, or `grealpath` from `brew install coreutils` on macOS
 - `powershell` for Windows desktop notifications
 - `notify-send` for Linux desktop notifications
 
@@ -141,10 +141,8 @@ NoirWatch monitors specified websites for changes and sends notifications. It su
    After=network.target
 
    [Service]
-   ExecStart=/path/to/noirwatch --start
+   ExecStart=/path/to/noirwatch
    WorkingDirectory=/path/to
-   StandardOutput=syslog
-   StandardError=syslog
    Restart=always
    User=your-username
 
@@ -153,6 +151,8 @@ NoirWatch monitors specified websites for changes and sends notifications. It su
    ```
 
    Replace `/path/to/noirwatch` with the actual path to the `noirwatch` script and `your-username` with your actual username.
+
+   Do not add `--start` here. systemd runs NoirWatch in the foreground and restarts it if it stops; `--start` would detach it from systemd. Logs go to the journal (`journalctl -u noirwatch`) as well as the NoirWatch log file.
 
 3. Reload systemd to apply the new service:
 
@@ -180,10 +180,12 @@ NoirWatch monitors specified websites for changes and sends notifications. It su
 
 ### macOS
 
+Run NoirWatch as a LaunchAgent so it runs as you, reads your configuration file, and can show desktop notifications.
+
 1. Create a launchd plist file:
 
    ```bash
-   sudo nano /Library/LaunchDaemons/com.noirwatch.plist
+   nano ~/Library/LaunchAgents/com.noirwatch.plist
    ```
 
 2. Add the following content to the plist file:
@@ -198,40 +200,40 @@ NoirWatch monitors specified websites for changes and sends notifications. It su
        <key>ProgramArguments</key>
        <array>
            <string>/path/to/noirwatch</string>
-           <string>--start</string>
        </array>
-       <key>WorkingDirectory</key>
-       <string>/path/to</string>
+       <key>EnvironmentVariables</key>
+       <dict>
+           <key>PATH</key>
+           <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+       </dict>
        <key>RunAtLoad</key>
        <true/>
        <key>KeepAlive</key>
        <true/>
-       <key>StandardOutPath</key>
-       <string>/var/log/noirwatch.log</string>
        <key>StandardErrorPath</key>
-       <string>/var/log/noirwatch.log</string>
+       <string>/tmp/noirwatch.launchd.log</string>
    </dict>
    </plist>
    ```
 
-   Replace `/path/to/noirwatch` with the actual path to the `noirwatch` script.
+   Replace `/path/to/noirwatch` with the actual path to the `noirwatch` script. Do not add `--start`; launchd keeps NoirWatch running in the foreground. The `PATH` entry lets launchd find Homebrew's Bash, because macOS's built-in Bash 3.2 cannot run NoirWatch.
 
 3. Load the plist file to start the service:
 
    ```bash
-   sudo launchctl load /Library/LaunchDaemons/com.noirwatch.plist
+   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.noirwatch.plist
    ```
 
 4. Check the status of the service:
 
    ```bash
-   sudo launchctl list | grep com.noirwatch
+   launchctl print gui/$(id -u)/com.noirwatch | grep state
    ```
 
 5. To unload the service:
 
    ```bash
-   sudo launchctl unload /Library/LaunchDaemons/com.noirwatch.plist
+   launchctl bootout gui/$(id -u)/com.noirwatch
    ```
 
 ### Setting Up NoirWatch as a Service on Windows
@@ -267,16 +269,24 @@ Run the script with the desired options. Below are some examples:
   ./noirwatch https://example.com
   ```
 
-- Monitor URLs from a file:
+- Monitor every URL listed under `urls` in the configuration file:
 
   ```bash
-  ./noirwatch -f urls
+  ./noirwatch
   ```
 
-- Run the script in the background:
+- Override the change threshold for one URL (here, 15%):
 
   ```bash
-  ./noirwatch -b https://example.com
+  ./noirwatch '[15]https://example.com'
+  ```
+
+- Run the script in the background, check on it, and stop it:
+
+  ```bash
+  ./noirwatch --start
+  ./noirwatch --status
+  ./noirwatch --stop
   ```
 
 - Send Pushover notifications:
@@ -287,7 +297,7 @@ Run the script with the desired options. Below are some examples:
 
 ## Configuration
 
-NoirWatch uses a configuration file to store default settings. The default location is `~/.config/noirwatch.conf`. You can initialize a configuration file with default settings using:
+NoirWatch uses a configuration file to store default settings. The default location is `~/.config/noirwatch.json` on macOS and Linux, and `%APPDATA%\noirwatch.json` on Windows. You can initialize a configuration file with default settings using:
 
 ```bash
 ./noirwatch --init
@@ -334,6 +344,14 @@ NoirWatch uses a configuration file to store default settings. The default locat
 }
 ```
 
+### Configuration Notes
+
+- `--init` creates the configuration file so only your user can read it, because it can hold your Pushover keys. Keep it out of version control.
+- Settings given on the command line override the configuration file.
+- Unknown keys in the `configuration` section are ignored with a warning, so a typo cannot change unrelated settings.
+- `CHECK_INTERVAL` and `TIMEOUT` take a whole number with an optional `s`, `m`, `h` or `d` suffix, such as `30s` or `5m`.
+- The cache directory must belong to your user. NoirWatch refuses to use system directories, your home directory, or a directory owned by someone else.
+
 ## Options
 
 ### General Options
@@ -348,6 +366,7 @@ NoirWatch uses a configuration file to store default settings. The default locat
 - `-f, --force-init`: Force initialize the configuration file if one exists.
 - `-S, --show-config`: Show the configuration settings.
 - `-e, --show-config-file`: Show the configuration file.
+- `-E, --edit-config`: Edit the configuration file.
 
 ### Cache Management
 
@@ -356,11 +375,11 @@ NoirWatch uses a configuration file to store default settings. The default locat
 
 ### Notification Options
 
-- `-n, --system-name`: Name of the system running the script.
+- `-n, --system-name <name>`: Name of the system running the script.
 - `-p, --pushover`: Send Pushover notifications.
 - `-u, --user-key <key>`: Specify the user key for Pushover notifications.
 - `-a, --api-token <token>`: Specify the API token for Pushover notifications.
-- `-d, --desktop`: Send desktop notifications using AppleScript.
+- `-d, --desktop`: Send native desktop notifications (macOS, Linux and Windows).
 
 ### Logging and Output
 
@@ -371,17 +390,18 @@ NoirWatch uses a configuration file to store default settings. The default locat
 
 ### Remote Connection Configuration
 
-- `-i, --interval <minutes>`: Set the interval between checks (default is 15 minutes).
-- `-T, --timeout <seconds>`: Set the timeout for ping and DNS tests (default: 5 seconds).
-- `-H, --threshold <percentage>`: Set the threshold percentage for detecting changes (default: 0%).
+- `-I, --interval <s,m,h,d>`: Set the interval between checks, such as `90s` or `15m` (default: 60 seconds).
+- `-T, --timeout <s,m,h,d>`: Set the connection timeout for each request (default: 5 seconds).
+- `-N, --repeat <number>`: Run the checks this many times, then exit (default: 0, which runs until stopped).
+- `-H, --threshold <percentage>`: Set the percentage of a page that must change before you are notified. Higher values mean fewer notifications for minor changes (default: 0%).
 - `-U, --list-urls`: List all watched URLs.
 
 ### Process Management
 
-- `-s, --start`: Start the AppName service in the background.
-- `-k, --stop`: Stop the AppName service.
-- `-r, --restart`: Restart the AppName service.
-- `-t, --status`: Check the current status of the AppName service.
+- `-s, --start`: Start the NoirWatch service in the background.
+- `-k, --stop`: Stop the NoirWatch service.
+- `-r, --restart`: Restart the NoirWatch service.
+- `-t, --status`: Check the current status of the NoirWatch service. Exits with code 0 when it is running and 3 when it is stopped.
 
 ## Docker Deployment Instructions
 
@@ -393,160 +413,68 @@ Ensure you have the following installed on your system:
 
 - Docker
 
-### Using the Dockerfile
-
-To download the `Dockerfile` from the GitHub repository, run the following command:
-
-```sh
-curl -O https://raw.githubusercontent.com/binarynoir/noirwatch/main/Dockerfile
-```
-
 ### Build and Deploy
 
-Navigate to the directory containing the `Dockerfile` and run the following command to build and start the service:
+Clone the repository, then build the image from the repository root. The image contains the `noirwatch` script from your checkout and runs it as an unprivileged user.
 
 ```sh
+git clone https://github.com/binarynoir/noirwatch.git
+cd noirwatch
 docker build -t noirwatch-image .
 docker run -d --restart unless-stopped --name noirwatch noirwatch-image
 ```
 
-### Conclusion
+The image creates a default configuration at `/app/noirwatch.json`. To use your own, mount it over that file:
 
-You have successfully deployed the NoirWatch service using Docker. The service will automatically start when the container is created and will restart if it stops unexpectedly. For any further modifications or assistance, feel free to ask!
+```sh
+docker run -d --restart unless-stopped --name noirwatch \
+  -v "$PWD/noirwatch.json:/app/noirwatch.json:ro" noirwatch-image
+```
+
+NoirWatch runs in the foreground, so `docker logs noirwatch` shows its output and `docker stop noirwatch` shuts it down cleanly. Arguments after the image name are passed to NoirWatch, for example `docker run --rm noirwatch-image --show-config`.
 
 ## Instructions for Running the Tests
 
-To run the tests for the `NoirWatch` script, follow these steps:
+The tests run offline against local test servers, so they do not depend on outside websites.
 
 ### Prerequisites
 
-Ensure you have the following installed on your system:
-
-- Bash
-- Git (for cloning the repository)
+- Bash 4.3+ and the dependencies listed under [Requirements](#requirements)
+- `python3` for the local test web server
+- `shellcheck` to lint the scripts (optional)
 
 ### Steps to Run the Tests
 
-1. **Navigate to the Test Directory**:
+From the repository root:
 
-   ```bash
-   cd test
-   ```
+```bash
+./test/test.sh
+```
 
-2. **Update the Test Configuration File:** Open the test_noirwatch.conf file in your preferred text editor and ensure it contains the following configuration:
+The script prints `ok` or `FAIL` for each check and exits with a non-zero status if any check fails. It works in a temporary directory and removes everything it creates when it exits.
 
-   ```json
-   {
-   	"configuration": {
-   		"CACHE_DIR": "./test/cache",
-   		"LOG_FILE": "./test/cache/noirwatch.log",
-   		"CHECK_INTERVAL": "60s",
-   		"TIMEOUT": "5s",
-   		"SYSTEM_NAME": "Test System",
-   		"PUSHOVER_NOTIFICATION": "false",
-   		"PUSHOVER_USER_KEY": "",
-   		"PUSHOVER_API_TOKEN": "",
-   		"DESKTOP_NOTIFICATION": "false",
-   		"VERBOSE": "true",
-   		"LOG_LEVEL": "DEBUG",
-   		"THRESHOLD": "0"
-   	},
-   	"urls": {
-   		"default": [
-   			{
-   				"NAME": "Apple Newsroom",
-   				"URL": "https://www.apple.com/newsroom/",
-   				"TIMEOUT": "5s",
-   				"THRESHOLD": "1",
-   				"UPDATED_CMD": "./test/test_cmd.sh",
-   				"CMD_TIMEOUT": "5s"
-   			},
-   			{
-   				"NAME": "9to5mac Homepage",
-   				"URL": "https://9to5mac.com",
-   				"TIMEOUT": "10s",
-   				"THRESHOLD": "5",
-   				"UPDATED_CMD": "./test/test_cmd.sh",
-   				"CMD_TIMEOUT": "5s"
-   			}
-   		]
-   	}
-   }
-   ```
+To lint the scripts:
 
-3. **Update the Test URL File:** Open the test_urls.conf file in your preferred text editor and ensure it contains the following URLs:
+```bash
+shellcheck -s bash noirwatch test/*.sh scripts/*.sh
+```
 
-   ```bash
-   http://example.com
-   http://example.org
-   ```
-
-4. **Make the test script executable**:
-
-   ```bash
-   chmod +x test.sh
-   ```
-
-5. **Run the Test Script:**
-
-   ```bash
-   ./test.sh
-   ```
-
-6. **Run the Test Script with a Custom Configuration File**:
-
-   ```bash
-   ./test.sh /path/to/custom_config_file
-   ```
-
-7. **Clean Up Test Files (optional)**:
-
-   ```bash
-   rm -rf ./test_cache
-   rm -f ./test_noirwatch.log
-   ```
-
-### Summary
-
-The `test.sh` script will:
-
-1. Create a test configuration file (default or custom).
-2. Run various tests to check the functionality of NoirWatch, including configuration initialization, cache directory creation, log file creation, and website monitoring.
-3. Clean up the test files and directories after the tests are completed, except for the custom configuration file if it was passed in.
-
-Follow these instructions to ensure that NoirWatch is functioning correctly. If you encounter any issues, please open an issue or submit a pull request on the GitHub repository.
+GitHub Actions runs the linter and the tests on Linux and macOS for every push and pull request.
 
 ## Releases
 
 ### Releasing new releases
 
-- Update the changelog with new features and fixes
-- Commit all changed files and create a pull request
-- Run the release script from the project repo's root directory
+1. Update `VERSION` and `LAST_UPDATED` in the `noirwatch` script.
+2. Add an entry for the new version to `CHANGELOG.md`.
+3. Commit the changes and merge them to `main`.
+4. Run the release script from the repository root:
 
-  ```bash
-  ./scripts/publish-release.md
-  ```
+   ```bash
+   ./scripts/publish-release.sh
+   ```
 
-### Manually Releasing new releases
-
-- Create a new GitHub release using the new version number as the "Tag version". Use the exact version number and include a prefix `v`
-- Publish the release.
-
-  ```bash
-  git checkout main
-  git pull
-  git tag -a v1.y.z -m "v1.y.z"
-  git push --tags
-  ```
-
-Run shasum on the release for homebrew distribution.
-
-```bash
-shasum -a 256 noirwatch-1.x.x.tar.gz
-```
-
-The release will automatically be drafted.
+The script checks that the working tree is clean, that you are on `main`, and that the changelog has an entry for the version. It then tags the version and pushes the tag. The tag starts the release workflow, which runs CI, checks that the tag matches `VERSION`, creates the GitHub release, and updates the Homebrew formula.
 
 ## License
 
